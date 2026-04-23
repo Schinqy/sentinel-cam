@@ -1,0 +1,101 @@
+import asyncio
+import json
+import time
+import random
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from starlette.responses import StreamingResponse
+import uvicorn
+import io
+
+app = FastAPI(title="SentinelCam Mock Hub")
+
+active_connections = set()
+
+# VIOLATION TYPES
+VIOLATIONS = [
+    "ILLEGAL_PARKING",
+    "RED_ROBOT",
+    "STOP_LINE",
+    "SPEEDING"
+]
+
+CAMERAS = ["CAM1", "CAM2", "CAM3"]
+
+# A tiny 1x1 black pixel or a simple pre-rendered byte string for a placeholder image
+# To make it "WOW", we'll use a slightly larger colored block if possible, but for raw bytes
+# it's easier to just use a fixed small JPEG.
+DUMMY_JPEG = (
+    b'\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f'
+    b'\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xdb\x00C\x01\t\t\t\x0c\x0b\x0c'
+    b'\x18\r\r\x182!\x1c!22222222222222222222222222222222222222222222222222\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01'
+    b'\x22\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00'
+    b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00'
+    b'\x00\x01\x7d\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82'
+    b'\x16\x17\x18\x19\x1a%&\'()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95'
+    b'\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7'
+    b'\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7'
+    b'\xf8\xf9\xfa\xff\xc4\x00\x1f\x01\x00\x03\x01\x01\x01\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04'
+    b'\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x11\x00\x02\x01\x02\x04\x04\x03\x04\x07\x05\x04\x04\x00\x01\x02\x77\x00\x01'
+    b'\x02\x03\x11\x04\x05!1\x12AQ\x06"aq\x132\x81\x07\x14\x91\xa1\x08#B\xb1\xc1\xd1\xf0$3br\x82\x15&16\x17\x18\x19\x1a'
+    b'%&\'()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a'
+    b'\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3'
+    b'\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00'
+    b'\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xf7\xfa\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a'
+    b'(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a('
+    b'\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a'
+    b'(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a'
+    b'(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a(\xa2\x8a'
+    b'(\xa2\x8a(\xa2\x8b\xff\xd9'
+)
+
+async def simulate_violations():
+    while True:
+        await asyncio.sleep(random.randint(3, 8))
+        if active_connections:
+            event = {
+                "type": random.choice(VIOLATIONS),
+                "cam_id": random.choice(CAMERAS),
+                "violation": random.choice(VIOLATIONS),
+                "confidence": round(random.uniform(0.75, 0.99), 2),
+                "timestamp": time.strftime("%H:%M:%S")
+            }
+            message = json.dumps(event)
+            print(f"[MOCK] Broadcasting: {message}")
+            for connection in list(active_connections):
+                try:
+                    await connection.send_text(message)
+                except:
+                    active_connections.remove(connection)
+
+async def frame_generator():
+    """Serves a repeating mock JPEG stream."""
+    while True:
+        await asyncio.sleep(0.1) # 10 FPS
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + DUMMY_JPEG + b'\r\n')
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(simulate_violations())
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.add(websocket)
+    print(f"[MOCK] Dashboard connected. Active: {len(active_connections)}")
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_connections.remove(websocket)
+        print(f"[MOCK] Dashboard disconnected. Active: {len(active_connections)}")
+
+@app.get("/video/{cam_id}")
+async def video_feed(cam_id: str):
+    return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
