@@ -5,9 +5,11 @@ import { ViolationEvent } from '@/hooks/useSocket';
 
 interface NotificationPanelProps {
   violations: ViolationEvent[];
+  onViolationClick: (v: ViolationEvent) => void;
+  onViewHistory: () => void;
 }
 
-export default function NotificationPanel({ violations }: NotificationPanelProps) {
+export default function NotificationPanel({ violations, onViolationClick, onViewHistory }: NotificationPanelProps) {
   return (
     <div className="flex flex-col h-full glass-card border border-white/5">
       <div className="p-4 border-b border-white/10 flex justify-between items-center">
@@ -30,7 +32,11 @@ export default function NotificationPanel({ violations }: NotificationPanelProps
           </div>
         ) : (
           violations.map((log, index) => (
-            <div key={`${log.timestamp}-${index}`} className="p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-all cursor-pointer group">
+            <div 
+              key={`${log.timestamp}-${index}`} 
+              onClick={() => onViolationClick(log)}
+              className="p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-all cursor-pointer group"
+            >
               <div className="flex justify-between items-start mb-2">
                  <div>
                     <div className="text-[10px] font-black text-error tracking-widest uppercase mb-0.5">{log.violation.replace('_', ' ')}</div>
@@ -46,11 +52,15 @@ export default function NotificationPanel({ violations }: NotificationPanelProps
                       SNAPSHOT_{index + 1}.JPG
                     </div>
                  </div>
-                 <img 
-                   src={`https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=400`} 
-                   className="w-full h-full object-cover opacity-40 group-hover:opacity-70 transition-opacity" 
-                   alt="Violation"
-                 />
+                  <img 
+                    src={log.image_path ? `http://localhost:8000/${log.image_path}` : `https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=400`} 
+                    className="w-full h-full object-cover opacity-40 group-hover:opacity-70 transition-opacity" 
+                    alt="Violation"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = "https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=400";
+                    }}
+                  />
               </div>
             </div>
           ))
@@ -58,7 +68,10 @@ export default function NotificationPanel({ violations }: NotificationPanelProps
       </div>
       
       <div className="p-4 border-t border-white/10 text-center">
-         <button className="text-[10px] font-bold text-white/40 hover:text-white/90 transition-colors uppercase tracking-widest">
+         <button 
+           onClick={onViewHistory}
+           className="text-[10px] font-bold text-white/40 hover:text-white/90 transition-colors uppercase tracking-widest w-full py-2 hover:bg-white/5 rounded-md"
+         >
             VIEW FULL HISTORY
          </button>
       </div>

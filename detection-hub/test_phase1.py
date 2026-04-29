@@ -1,5 +1,4 @@
 import asyncio
-import cv2
 import numpy as np
 from database import init_db, save_violation, get_all_violations
 from utils import save_violation_frame
@@ -17,7 +16,6 @@ async def test():
     # 2. Save a dummy frame
     print("[2] Saving dummy frame...")
     dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    cv2.putText(dummy_frame, "TEST VIOLATION", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     
     image_path = save_violation_frame(dummy_frame, "TEST_CAM", "TEST_TYPE")
     if image_path and os.path.exists(image_path):

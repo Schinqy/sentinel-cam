@@ -6,6 +6,8 @@ export interface ViolationEvent {
   violation: string;
   confidence: number;
   timestamp: string;
+  image_path?: string;
+  plate_number?: string;
 }
 
 export const useSocket = (url: string) => {
