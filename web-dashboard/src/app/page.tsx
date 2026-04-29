@@ -20,7 +20,9 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
     // Fetch History
-    fetch('http://localhost:8005/violations')
+    fetch('http://localhost:8005/violations', {
+      headers: { 'X-API-Key': 'sentinel-secret-2026' }
+    })
       .then(res => res.json())
       .then(data => setHistory(data))
       .catch(err => console.error("Error fetching history:", err));

@@ -3,7 +3,7 @@ import json
 import time
 import os
 import random
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import StreamingResponse
 
@@ -11,6 +11,13 @@ from database import init_db, save_violation, get_all_violations, get_cameras, u
 from utils import save_violation_frame, mock_extract_plate
 
 app = FastAPI(title="SentinelCam Detection Hub")
+
+API_KEY = "sentinel-secret-2026"
+
+async def verify_api_key(x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid API Key")
+    return x_api_key
 
 # Shared state
 latest_frames = {}
@@ -80,6 +87,21 @@ async def broadcast_violation(data):
             try: await connection.send_text(message)
             except: pass
 
+async def cleanup_old_captures():
+    """Background task to delete captures older than 30 days."""
+    while True:
+        print("[CLEANUP] Checking for old captures...")
+        now = time.time()
+        retention_period = 30 * 24 * 60 * 60 # 30 days
+        for filename in os.listdir("captures"):
+            filepath = os.path.join("captures", filename)
+            if os.path.getmtime(filepath) < now - retention_period:
+                try:
+                    os.remove(filepath)
+                    print(f"[CLEANUP] Deleted {filename}")
+                except: pass
+        await asyncio.sleep(24 * 60 * 60) # Run once a day
+
 @app.on_event("startup")
 async def startup_event():
     await init_db()
@@ -87,6 +109,9 @@ async def startup_event():
     if not os.path.exists("captures"):
         os.makedirs("captures")
     app.mount("/captures", StaticFiles(directory="captures"), name="captures")
+
+    # Start cleanup task
+    asyncio.create_task(cleanup_old_captures())
 
     cameras = await get_cameras()
     for cam in cameras:
@@ -119,15 +144,15 @@ async def video_feed(cam_id: str):
             
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
-@app.get("/violations")
+@app.get("/violations", dependencies=[Depends(verify_api_key)])
 async def list_violations():
     return await get_all_violations()
 
-@app.get("/cameras")
+@app.get("/cameras", dependencies=[Depends(verify_api_key)])
 async def list_cameras():
     return await get_cameras()
 
-@app.post("/cameras/{cam_id}/roi")
+@app.post("/cameras/{cam_id}/roi", dependencies=[Depends(verify_api_key)])
 async def update_roi(cam_id: str, roi: list):
     await update_camera_roi(cam_id, roi)
     if cam_id in camera_configs:

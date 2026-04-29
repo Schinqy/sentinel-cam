@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  hub:
+    build: ./detection-hub
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./detection-hub/captures:/app/captures
+      - ./detection-hub/violations.db:/app/violations.db
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  dashboard:
+    build: ./web-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_HUB_URL=http://localhost:8005
+    depends_on:
+      - hub
