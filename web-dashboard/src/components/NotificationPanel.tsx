@@ -39,7 +39,7 @@ export default function NotificationPanel({ violations, onViolationClick, onView
             >
               <div className="flex justify-between items-start mb-2">
                  <div>
-                    <div className="text-[10px] font-black text-error tracking-widest uppercase mb-0.5">{log.violation.replace('_', ' ')}</div>
+                    <div className="text-[10px] font-black text-error tracking-widest uppercase mb-0.5">{(log.violation || log.type || "VIOLATION").replace('_', ' ')}</div>
                     <div className="text-[9px] font-bold text-white/40 uppercase">{log.cam_id} &bull; {log.timestamp}</div>
                  </div>
                  <div className="text-[10px] font-mono text-success">{Math.round(log.confidence * 100)}%</div>

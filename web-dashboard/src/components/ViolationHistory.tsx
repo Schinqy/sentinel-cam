@@ -14,8 +14,9 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
 
   const filteredViolations = violations.filter(v => 
     v.cam_id.toLowerCase().includes(filter.toLowerCase()) ||
-    v.violation.toLowerCase().includes(filter.toLowerCase())
+    (v.violation || v.type || '').toLowerCase().includes(filter.toLowerCase())
   );
+
 
   return (
     <div className="flex flex-col h-full glass-card border border-white/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -95,7 +96,7 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
                     <span className="text-[10px] font-mono text-white/60">{v.plate_number || '---'}</span>
                   </td>
                   <td className="px-6 py-4 font-bold text-[10px] text-error uppercase tracking-widest">
-                    {v.violation.replace('_', ' ')}
+                    {(v.violation || v.type || "VIOLATION").replace('_', ' ')}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">

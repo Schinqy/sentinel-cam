@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import aiosqlite
 from starlette.responses import StreamingResponse
+import numpy as np
+
 
 from database import init_db, save_violation, get_all_violations, get_cameras, update_camera_roi
 from utils import save_violation_frame, mock_extract_plate
@@ -42,7 +44,16 @@ def start_capture_thread(cam_id, url):
     """Real OpenCV video capture worker."""
     def run_capture():
         print(f"[HUB] Connecting to real stream for {cam_id} using URL: {url}")
-        cap = cv2.VideoCapture(url)
+        
+        # Check if URL is an integer (e.g., "0" or "1" for local webcams)
+        source = url
+        try:
+            if str(url).strip().isdigit():
+                source = int(url)
+        except:
+            pass
+
+        cap = cv2.VideoCapture(source)
         while True:
             if cam_id not in camera_configs or camera_configs[cam_id]['url'] != url:
                 cap.release()
@@ -51,7 +62,7 @@ def start_capture_thread(cam_id, url):
             ret, frame = cap.read()
             if not ret:
                 time.sleep(2)
-                cap.open(url)
+                cap.open(source)
                 continue
             
             ret, jpeg = cv2.imencode('.jpg', frame)
@@ -60,6 +71,7 @@ def start_capture_thread(cam_id, url):
                 
     t = threading.Thread(target=run_capture, daemon=True)
     t.start()
+
 
 async def process_violations(cam_id):
     """Background task to simulate periodic traffic events for active camera streams."""
@@ -141,6 +153,64 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
+def create_fallback_frame(cam_id, camera_name, url):
+    # Create a nice 640x360 dark background
+    height, width = 360, 640
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    
+    # Fill with a subtle dark slate gradient or solid color
+    # Let's do a dark blue-slate background (B, G, R)
+    frame[:] = (24, 15, 12)
+    
+    # Draw a grid for that premium aesthetic
+    grid_size = 40
+    for x in range(0, width, grid_size):
+        cv2.line(frame, (x, 0), (x, height), (32, 25, 20), 1)
+    for y in range(0, height, grid_size):
+        cv2.line(frame, (0, y), (width, y), (32, 25, 20), 1)
+    
+    # Blinking scanner or circle (animated using time.time())
+    t = time.time()
+    circle_y = int(180 + np.sin(t * 3) * 20)
+    # Glowing neon cyan circle
+    cv2.circle(frame, (width // 2, circle_y), 45, (230, 216, 0), 2)
+    cv2.circle(frame, (width // 2, circle_y), 3, (230, 216, 0), -1)
+    
+    # Corner HUD crosshairs
+    pad = 20
+    length = 15
+    # Top Left
+    cv2.line(frame, (pad, pad), (pad + length, pad), (100, 100, 100), 1)
+    cv2.line(frame, (pad, pad), (pad, pad + length), (100, 100, 100), 1)
+    # Top Right
+    cv2.line(frame, (width - pad, pad), (width - pad - length, pad), (100, 100, 100), 1)
+    cv2.line(frame, (width - pad, pad), (width - pad, pad + length), (100, 100, 100), 1)
+    # Bottom Left
+    cv2.line(frame, (pad, height - pad), (pad + length, height - pad), (100, 100, 100), 1)
+    cv2.line(frame, (pad, height - pad), (pad, height - pad - length), (100, 100, 100), 1)
+    # Bottom Right
+    cv2.line(frame, (width - pad, height - pad), (width - pad - length, height - pad), (100, 100, 100), 1)
+    cv2.line(frame, (width - pad, height - pad), (width - pad, height - pad - length), (100, 100, 100), 1)
+    
+    # Draw blinking amber text or "SENTINEL-CAM"
+    # Blinks every second
+    if int(t * 2) % 2 == 0:
+        cv2.putText(frame, "* CONNECTING / NO LIVE FEED", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1, cv2.LINE_AA)
+    else:
+        cv2.putText(frame, "  CONNECTING / NO LIVE FEED", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 120, 200), 1, cv2.LINE_AA)
+
+    # Put camera metadata
+    cv2.putText(frame, f"NODE: {cam_id.upper()}", (30, height - pad - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"NAME: {camera_name}", (30, height - pad - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"SOURCE: {url}", (30, height - pad), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (80, 80, 80), 1, cv2.LINE_AA)
+
+    # Dynamic time
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+    cv2.putText(frame, current_time, (width - 190, height - pad), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
+    
+    ret, jpeg = cv2.imencode('.jpg', frame)
+    return jpeg.tobytes() if ret else None
+
 @app.get("/video/{cam_id}")
 async def video_feed(cam_id: str):
     if cam_id not in camera_configs:
@@ -149,12 +219,17 @@ async def video_feed(cam_id: str):
     def generate():
         while True:
             frame = latest_frames.get(cam_id)
+            if not frame:
+                config = camera_configs.get(cam_id, {})
+                frame = create_fallback_frame(cam_id, config.get("name", "Unknown"), config.get("url", "N/A"))
+            
             if frame:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             time.sleep(0.1)
             
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
+
 
 @app.get("/violations", dependencies=[Depends(verify_api_key)])
 async def list_violations():
