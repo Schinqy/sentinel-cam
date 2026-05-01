@@ -8,8 +8,8 @@
  */
 
 // --- CONFIGURATION ---
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "Sch! Phone";
+const char* password = "12345678";
 
 // Camera Pinouts (Standard AI-Thinker)
 #define PWDN_GPIO_NUM     32

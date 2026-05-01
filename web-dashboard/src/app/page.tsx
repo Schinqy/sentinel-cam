@@ -10,7 +10,7 @@ import { useSocket, ViolationEvent } from "@/hooks/useSocket";
 type DashboardView = 'dashboard' | 'history';
 
 export default function Home() {
-  const { violations: liveViolations, isConnected } = useSocket('ws://localhost:8005/ws');
+  const { violations: liveViolations, isConnected } = useSocket('ws://127.0.0.1:8005/ws');
   const [history, setHistory] = useState<ViolationEvent[]>([]);
   const [selectedViolation, setSelectedViolation] = useState<ViolationEvent | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,7 +20,7 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
     // Fetch History
-    fetch('http://localhost:8005/violations', {
+    fetch('http://127.0.0.1:8005/violations', {
       headers: { 'X-API-Key': 'sentinel-secret-2026' }
     })
       .then(res => res.json())
@@ -82,7 +82,7 @@ export default function Home() {
                   name="North Intersection" 
                   violationType="Illegal Parking" 
                   isPrimary={true}
-                  streamUrl="http://localhost:8005/video/cam1"
+                  streamUrl="http://127.0.0.1:8005/video/cam1"
                 />
               </div>
 
@@ -92,13 +92,13 @@ export default function Home() {
                    id="cam2" 
                    name="East Junction" 
                    violationType="Red Robot" 
-                   streamUrl="http://localhost:8005/video/cam2"
+                   streamUrl="http://127.0.0.1:8005/video/cam2"
                  />
                  <CameraFeed 
                    id="cam3" 
                    name="South Crosswalk" 
                    violationType="Stop Line" 
-                   streamUrl="http://localhost:8005/video/cam3"
+                   streamUrl="http://127.0.0.1:8005/video/cam3"
                  />
               </div>
             </div>
@@ -151,7 +151,7 @@ export default function Home() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         violationData={selectedViolation}
-        imageUrl={selectedViolation?.image_path ? `http://localhost:8005/${selectedViolation.image_path}` : null}
+        imageUrl={selectedViolation?.image_path ? `http://127.0.0.1:8005/${selectedViolation.image_path}` : null}
       />
     </main>
   );

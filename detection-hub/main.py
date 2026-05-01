@@ -10,7 +10,17 @@ from starlette.responses import StreamingResponse
 from database import init_db, save_violation, get_all_violations, get_cameras, update_camera_roi
 from utils import save_violation_frame, mock_extract_plate
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="SentinelCam Detection Hub")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 API_KEY = "sentinel-secret-2026"
 
