@@ -9,9 +9,10 @@ interface CameraFeedProps {
   streamUrl?: string; // e.g. "http://localhost:8000/video/cam1"
   sourceUrl?: string; // e.g. "http://10.26.15.40/stream"
   isPrimary?: boolean;
+  onSettingsClick?: () => void;
 }
 
-export default function CameraFeed({ id, name, violationType, streamUrl, sourceUrl, isPrimary }: CameraFeedProps) {
+export default function CameraFeed({ id, name, violationType, streamUrl, sourceUrl, isPrimary, onSettingsClick }: CameraFeedProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [error, setError] = useState(false);
@@ -98,7 +99,10 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
            >
              {isCalibrating ? 'SAVE ZONES' : 'CALIBRATE'}
            </button>
-           <button className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70 text-[10px] font-bold transition-all">
+           <button 
+             onClick={onSettingsClick}
+             className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70 text-[10px] font-bold transition-all"
+           >
              SETTINGS
            </button>
         </div>

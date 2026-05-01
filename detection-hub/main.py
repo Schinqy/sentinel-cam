@@ -3,14 +3,18 @@ import json
 import time
 import os
 import random
+import sys
+import shutil
+import threading
+import cv2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import aiosqlite
 from starlette.responses import StreamingResponse
 
 from database import init_db, save_violation, get_all_violations, get_cameras, update_camera_roi
 from utils import save_violation_frame, mock_extract_plate
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="SentinelCam Detection Hub")
 
@@ -34,61 +38,60 @@ latest_frames = {}
 camera_configs = {}
 active_connections = set()
 
-# AI Model (Mocked for environment stability)
-class MockModel:
-    def __call__(self, frame, verbose=False):
-        return [type('Result', (), {'boxes': []})]
+def start_capture_thread(cam_id, url):
+    """Real OpenCV video capture worker."""
+    def run_capture():
+        print(f"[HUB] Connecting to real stream for {cam_id} using URL: {url}")
+        cap = cv2.VideoCapture(url)
+        while True:
+            if cam_id not in camera_configs or camera_configs[cam_id]['url'] != url:
+                cap.release()
+                break
+            
+            ret, frame = cap.read()
+            if not ret:
+                time.sleep(2)
+                cap.open(url)
+                continue
+            
+            ret, jpeg = cv2.imencode('.jpg', frame)
+            if ret:
+                latest_frames[cam_id] = jpeg.tobytes()
+                
+    t = threading.Thread(target=run_capture, daemon=True)
+    t.start()
 
-model = MockModel()
-
-def get_placeholder_frame():
-    from PIL import Image
-    import io
-    img = Image.new('RGB', (640, 480), color=(0, 0, 0))
-    buf = io.BytesIO()
-    img.save(buf, format='JPEG')
-    return buf.getvalue()
-
-async def fetch_camera_stream(cam_id):
-    """Background worker that simulates fetching frames and performing detection."""
-    print(f"[HUB] Starting fetch task for {cam_id}...")
-    
+async def process_violations(cam_id):
+    """Background task to simulate periodic traffic events for active camera streams."""
     while True:
-        config = camera_configs.get(cam_id)
-        if not config: break
-        
-        await asyncio.sleep(random.randint(10, 20))
-        
-        timestamp_str = time.strftime("%H:%M:%S")
-        v_type = "ILLEGAL_PARKING" if cam_id == "cam1" else "TRAFFIC_VIOLATION"
-        confidence = round(random.uniform(0.7, 0.99), 2)
-        
-        dummy_frame = get_placeholder_frame()
-        latest_frames[cam_id] = dummy_frame
-        
-        image_path = save_violation_frame(dummy_frame, cam_id, v_type)
-        plate_number = mock_extract_plate(dummy_frame)
-        
-        await save_violation(
-            cam_id=cam_id.upper(),
-            v_type=v_type,
-            confidence=confidence,
-            timestamp=timestamp_str,
-            image_path=image_path,
-            plate_number=plate_number
-        )
+        await asyncio.sleep(random.randint(15, 30))
+        frame_bytes = latest_frames.get(cam_id)
+        if frame_bytes:
+            timestamp_str = time.strftime("%H:%M:%S")
+            v_type = "ILLEGAL_PARKING" if cam_id == "cam1" else "TRAFFIC_VIOLATION"
+            confidence = round(random.uniform(0.7, 0.99), 2)
+            
+            image_path = save_violation_frame(frame_bytes, cam_id, v_type)
+            plate_number = mock_extract_plate(frame_bytes)
+            
+            await save_violation(
+                cam_id=cam_id.upper(),
+                v_type=v_type,
+                confidence=confidence,
+                timestamp=timestamp_str,
+                image_path=image_path,
+                plate_number=plate_number
+            )
 
-        await broadcast_violation({
-            "type": v_type,
-            "cam_id": cam_id.upper(),
-            "violation": v_type,
-            "confidence": confidence,
-            "timestamp": timestamp_str,
-            "image_path": image_path,
-            "plate_number": plate_number
-        })
-        
-        await asyncio.sleep(0.1)
+            await broadcast_violation({
+                "type": v_type,
+                "cam_id": cam_id.upper(),
+                "violation": v_type,
+                "confidence": confidence,
+                "timestamp": timestamp_str,
+                "image_path": image_path,
+                "plate_number": plate_number
+            })
 
 async def broadcast_violation(data):
     if active_connections:
@@ -102,15 +105,14 @@ async def cleanup_old_captures():
     while True:
         print("[CLEANUP] Checking for old captures...")
         now = time.time()
-        retention_period = 30 * 24 * 60 * 60 # 30 days
+        retention_period = 30 * 24 * 60 * 60
         for filename in os.listdir("captures"):
             filepath = os.path.join("captures", filename)
             if os.path.getmtime(filepath) < now - retention_period:
                 try:
                     os.remove(filepath)
-                    print(f"[CLEANUP] Deleted {filename}")
                 except: pass
-        await asyncio.sleep(24 * 60 * 60) # Run once a day
+        await asyncio.sleep(24 * 60 * 60)
 
 @app.on_event("startup")
 async def startup_event():
@@ -120,7 +122,6 @@ async def startup_event():
         os.makedirs("captures")
     app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 
-    # Start cleanup task
     asyncio.create_task(cleanup_old_captures())
 
     cameras = await get_cameras()
@@ -128,7 +129,8 @@ async def startup_event():
         cam_id = cam['id']
         camera_configs[cam_id] = cam
         latest_frames[cam_id] = None
-        asyncio.create_task(fetch_camera_stream(cam_id))
+        start_capture_thread(cam_id, cam['url'])
+        asyncio.create_task(process_violations(cam_id))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -171,6 +173,50 @@ async def update_roi(cam_id: str, roi: list):
         camera_configs[cam_id]['roi_x2'] = roi[2]
         camera_configs[cam_id]['roi_y2'] = roi[3]
     return {"status": "success", "roi": roi}
+
+@app.post("/cameras/{cam_id}/config", dependencies=[Depends(verify_api_key)])
+async def update_camera_config(cam_id: str, data: dict):
+    from database import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE cameras SET name=?, url=? WHERE id=?",
+            (data.get("name"), data.get("url"), cam_id)
+        )
+        await db.commit()
+    if cam_id in camera_configs:
+        if "name" in data: camera_configs[cam_id]['name'] = data['name']
+        if "url" in data:
+            camera_configs[cam_id]['url'] = data['url']
+            start_capture_thread(cam_id, data['url'])
+    return {"status": "success"}
+
+@app.get("/diagnostics", dependencies=[Depends(verify_api_key)])
+async def get_diagnostics():
+    total, used, free = shutil.disk_usage("/")
+    disk_free_gb = round(free / (1024 ** 3), 2)
+    
+    cpu_load = "N/A"
+    try:
+        if sys.platform != "win32":
+            cpu_load = f"{os.getloadavg()[0]} (1m)"
+    except: pass
+
+    cameras_status = []
+    for cam_id, config in camera_configs.items():
+        is_live = latest_frames.get(cam_id) is not None
+        cameras_status.append({
+            "id": cam_id,
+            "name": config.get("name"),
+            "url": config.get("url"),
+            "status": "ONLINE" if is_live else "OFFLINE"
+        })
+        
+    return {
+        "disk_free_gb": disk_free_gb,
+        "cpu_load": cpu_load,
+        "active_connections": len(active_connections),
+        "cameras": cameras_status
+    }
 
 if __name__ == "__main__":
     import uvicorn
