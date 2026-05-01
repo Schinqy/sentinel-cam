@@ -18,6 +18,9 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
   const [isLoaded, setIsLoaded] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [error, setError] = useState(false);
+  const [roi, setRoi] = useState<[number, number, number, number] | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
   
   let displayIp = "127.0.0.1";
   try {
@@ -28,6 +31,56 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
   } catch (e) {
     if (sourceUrl) displayIp = sourceUrl;
   }
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isCalibrating) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    setStartPoint([x, y]);
+    setRoi([x, y, x, y]);
+    setDrawing(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isCalibrating || !drawing || !startPoint) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    setRoi([
+      Math.min(startPoint[0], x),
+      Math.min(startPoint[1], y),
+      Math.max(startPoint[0], x),
+      Math.max(startPoint[1], y)
+    ]);
+  };
+
+  const handleMouseUp = () => {
+    if (isCalibrating && drawing) {
+      setDrawing(false);
+    }
+  };
+
+  const saveZones = () => {
+    if (roi) {
+      fetch(`http://127.0.0.1:8005/cameras/${id}/roi`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-API-Key': 'sentinel-secret-2026'
+        },
+        body: JSON.stringify(roi)
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log("ROI updated:", data);
+        setIsCalibrating(false);
+      })
+      .catch(err => console.error("Error saving zones:", err));
+    } else {
+      setIsCalibrating(false);
+    }
+  };
 
   return (
     <div className={`relative glass-card overflow-hidden group border-2 ${isPrimary ? 'border-primary/20' : 'border-white/5'}`}>
@@ -82,12 +135,33 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
           </div>
         )}
 
-        {/* Calibration Overlay (Placeholder for now) */}
+        {/* Interactive Calibration Overlay */}
         {isCalibrating && (
-          <div className="absolute inset-0 bg-primary/10 border-2 border-primary/50 cursor-crosshair flex items-center justify-center overflow-hidden">
-            <div className="text-white text-[10px] font-bold bg-primary px-2 py-1 rounded shadow-lg animate-bounce">
-              DRAW VIOLATION ZONES ({name})
-            </div>
+          <div 
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            className="absolute inset-0 bg-primary/10 border-2 border-primary/30 cursor-crosshair z-30 select-none flex items-center justify-center overflow-hidden"
+          >
+            {roi ? (
+              <div 
+                className="absolute border-2 border-dashed border-primary bg-primary/20 backdrop-blur-[1px] flex items-center justify-center pointer-events-none"
+                style={{
+                  left: `${roi[0] * 100}%`,
+                  top: `${roi[1] * 100}%`,
+                  width: `${(roi[2] - roi[0]) * 100}%`,
+                  height: `${(roi[3] - roi[1]) * 100}%`,
+                }}
+              >
+                <span className="text-white text-[9px] font-bold bg-primary px-1 py-0.5 rounded shadow whitespace-nowrap">
+                  ROI DETECT ZONE
+                </span>
+              </div>
+            ) : (
+              <div className="text-white text-[10px] font-bold bg-primary/80 px-3 py-1 rounded shadow-lg animate-bounce pointer-events-none select-none uppercase tracking-wider">
+                Click & drag to draw ROI
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -96,7 +170,13 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
       <div className="p-2 flex justify-between items-center bg-black/20 backdrop-blur-sm border-t border-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
         <div className="flex gap-2">
            <button 
-             onClick={() => setIsCalibrating(!isCalibrating)}
+             onClick={() => {
+               if (isCalibrating) {
+                 saveZones();
+               } else {
+                 setIsCalibrating(true);
+               }
+             }}
              className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${isCalibrating ? 'bg-accent text-white' : 'bg-white/10 hover:bg-white/20 text-white/70'}`}
            >
              {isCalibrating ? 'SAVE ZONES' : 'CALIBRATE'}
