@@ -321,6 +321,43 @@ async def get_diagnostics():
         "cameras": cameras_status
     }
 
+@app.post("/test/trigger-violation", dependencies=[Depends(verify_api_key)])
+async def trigger_test_violation(data: dict):
+    cam_id = data.get("cam_id", "cam1")
+    v_type = data.get("v_type", "ILLEGAL_PARKING")
+    
+    frame_bytes = latest_frames.get(cam_id)
+    if not frame_bytes:
+        config = camera_configs.get(cam_id, {})
+        frame_bytes = create_fallback_frame(cam_id, config.get("name", "Unknown"), config.get("url", "N/A"))
+    
+    timestamp_str = time.strftime("%H:%M:%S")
+    confidence = round(random.uniform(0.75, 0.99), 2)
+    
+    image_path = save_violation_frame(frame_bytes, cam_id, v_type)
+    plate_number = mock_extract_plate(frame_bytes)
+    
+    await save_violation(
+        cam_id=cam_id.upper(),
+        v_type=v_type,
+        confidence=confidence,
+        timestamp=timestamp_str,
+        image_path=image_path,
+        plate_number=plate_number
+    )
+    
+    await broadcast_violation({
+        "type": v_type,
+        "cam_id": cam_id.upper(),
+        "violation": v_type,
+        "confidence": confidence,
+        "timestamp": timestamp_str,
+        "image_path": image_path,
+        "plate_number": plate_number
+    })
+    
+    return {"status": "success", "violation": v_type}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8005)

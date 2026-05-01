@@ -22,6 +22,7 @@ export default function Home() {
   const [settingsUrl, setSettingsUrl] = useState('');
   const [settingsName, setSettingsName] = useState('');
   const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
+  const [showTestMode, setShowTestMode] = useState(false);
 
   const fetchDiagnostics = () => {
     fetch('http://127.0.0.1:8005/diagnostics', {
@@ -91,8 +92,69 @@ export default function Home() {
                 {allViolations.length > 0 ? allViolations[0].timestamp : '--:--:--'}
               </div>
           </div>
+          <div className="flex items-center">
+             <button
+               onClick={() => setShowTestMode(!showTestMode)}
+               className={`px-3 py-1 rounded border text-[10px] font-bold uppercase transition-all ${showTestMode ? 'bg-primary text-white border-primary' : 'bg-transparent text-white/40 border-white/20 hover:text-white'}`}
+             >
+               {showTestMode ? 'TEST SUITE: ON' : 'TEST SUITE: OFF'}
+             </button>
+          </div>
         </div>
       </header>
+
+      {showTestMode && (
+        <div className="bg-primary/5 border border-primary/20 rounded p-3 flex flex-wrap gap-3 items-center justify-between shrink-0 animate-fade-in bg-slate-950">
+          <div className="flex flex-col">
+            <span className="text-xs font-black italic text-primary uppercase">Manual Test Triggers</span>
+            <span className="text-[9px] font-medium text-white/40 uppercase">Trigger artificial violation events for verification</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button 
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/test/trigger-violation', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ cam_id: 'cam1', v_type: 'Illegal Parking' })
+                })
+                .then(res => res.json())
+                .catch(err => console.error(err));
+              }}
+              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Simulate Cam1 Violation
+            </button>
+            <button 
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/test/trigger-violation', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ cam_id: 'cam2', v_type: 'Red Robot' })
+                })
+                .then(res => res.json())
+                .catch(err => console.error(err));
+              }}
+              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Simulate Cam2 Violation
+            </button>
+            <button 
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/test/trigger-violation', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ cam_id: 'cam3', v_type: 'Stop Line' })
+                })
+                .then(res => res.json())
+                .catch(err => console.error(err));
+              }}
+              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Simulate Cam3 Violation
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeView === 'dashboard' ? (
         /* Grid Section */
