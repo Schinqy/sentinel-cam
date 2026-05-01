@@ -7,15 +7,24 @@ interface CameraFeedProps {
   name: string;
   violationType: string;
   streamUrl?: string; // e.g. "http://localhost:8000/video/cam1"
+  sourceUrl?: string; // e.g. "http://10.26.15.40/stream"
   isPrimary?: boolean;
 }
 
-export default function CameraFeed({ id, name, violationType, streamUrl, isPrimary }: CameraFeedProps) {
+export default function CameraFeed({ id, name, violationType, streamUrl, sourceUrl, isPrimary }: CameraFeedProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [error, setError] = useState(false);
   
-  const ipSuffix = id.replace('cam', '');
+  let displayIp = "127.0.0.1";
+  try {
+    if (sourceUrl) {
+      const urlObj = new URL(sourceUrl);
+      displayIp = urlObj.hostname;
+    }
+  } catch (e) {
+    if (sourceUrl) displayIp = sourceUrl;
+  }
 
   return (
     <div className={`relative glass-card overflow-hidden group border-2 ${isPrimary ? 'border-primary/20' : 'border-white/5'}`}>
@@ -94,7 +103,7 @@ export default function CameraFeed({ id, name, violationType, streamUrl, isPrima
            </button>
         </div>
         <div className="text-[10px] text-white/40 font-mono italic">
-           192.168.1.{44 + parseInt(ipSuffix || '1')}
+           {displayIp}
         </div>
       </div>
     </div>

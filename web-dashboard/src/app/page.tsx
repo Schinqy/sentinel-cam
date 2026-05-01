@@ -12,6 +12,7 @@ type DashboardView = 'dashboard' | 'history';
 export default function Home() {
   const { violations: liveViolations, isConnected } = useSocket('ws://127.0.0.1:8005/ws');
   const [history, setHistory] = useState<ViolationEvent[]>([]);
+  const [cameras, setCameras] = useState<any[]>([]);
   const [selectedViolation, setSelectedViolation] = useState<ViolationEvent | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -26,6 +27,14 @@ export default function Home() {
       .then(res => res.json())
       .then(data => setHistory(data))
       .catch(err => console.error("Error fetching history:", err));
+
+    // Fetch Cameras
+    fetch('http://127.0.0.1:8005/cameras', {
+      headers: { 'X-API-Key': 'sentinel-secret-2026' }
+    })
+      .then(res => res.json())
+      .then(data => setCameras(data))
+      .catch(err => console.error("Error fetching cameras:", err));
   }, []);
 
   const handleViolationClick = (v: ViolationEvent) => {
@@ -79,10 +88,11 @@ export default function Home() {
               <div className="flex-[2] min-w-0">
                 <CameraFeed 
                   id="cam1" 
-                  name="North Intersection" 
+                  name={cameras.find(c => c.id === 'cam1')?.name || "North Intersection"} 
                   violationType="Illegal Parking" 
                   isPrimary={true}
                   streamUrl="http://127.0.0.1:8005/video/cam1"
+                  sourceUrl={cameras.find(c => c.id === 'cam1')?.url || "http://192.168.1.45/stream"}
                 />
               </div>
 
@@ -90,15 +100,17 @@ export default function Home() {
               <div className="flex-1 flex flex-col gap-4 min-w-0">
                  <CameraFeed 
                    id="cam2" 
-                   name="East Junction" 
+                   name={cameras.find(c => c.id === 'cam2')?.name || "East Junction"} 
                    violationType="Red Robot" 
                    streamUrl="http://127.0.0.1:8005/video/cam2"
+                   sourceUrl={cameras.find(c => c.id === 'cam2')?.url || "http://192.168.1.46/stream"}
                  />
                  <CameraFeed 
                    id="cam3" 
-                   name="South Crosswalk" 
+                   name={cameras.find(c => c.id === 'cam3')?.name || "South Crosswalk"} 
                    violationType="Stop Line" 
                    streamUrl="http://127.0.0.1:8005/video/cam3"
+                   sourceUrl={cameras.find(c => c.id === 'cam3')?.url || "http://192.168.1.47/stream"}
                  />
               </div>
             </div>
