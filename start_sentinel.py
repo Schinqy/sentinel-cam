@@ -42,12 +42,17 @@ def start_system():
     print("\nKEEP THIS WINDOW OPEN TO RUN THE SYSTEM.")
     print("Close this window or press Ctrl+C to stop all services.")
 
-    try:
-        input("\n[✔] ALL SERVICES RUNNING. Press Enter at any time to shutdown the system...\n")
-    except (KeyboardInterrupt, EOFError):
-        pass
+    print("\n[✔] ALL SERVICES RUNNING. Close this window or use Ctrl+C to stop the services.")
 
-    print("\n\n[!] Shutting down SentinelCam...")
+    while True:
+        try:
+            time.sleep(1)
+        except (KeyboardInterrupt, SystemExit):
+            print("\n\n[!] Shutting down SentinelCam...")
+            break
+        except Exception:
+            pass
+
     hub_proc.terminate()
     # Kill dashboard process tree (npm spawns children)
     subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
