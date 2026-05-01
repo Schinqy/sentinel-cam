@@ -21,6 +21,7 @@ export default function Home() {
   const [diagnostics, setDiagnostics] = useState<any | null>(null);
   const [settingsUrl, setSettingsUrl] = useState('');
   const [settingsName, setSettingsName] = useState('');
+  const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
 
   const fetchDiagnostics = () => {
     fetch('http://127.0.0.1:8005/diagnostics', {
@@ -100,55 +101,79 @@ export default function Home() {
           {/* Left & Center: Multi-Feed Monitor */}
           <div className="lg:col-span-3 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
             
-            <div className="flex gap-4 flex-col xl:flex-row">
-              {/* Primary Focus: Camera 1 */}
-              <div className="flex-[2] min-w-0">
+            {expandedCamId ? (
+              <div className="flex-1 min-w-0">
                 <CameraFeed 
-                  id="cam1" 
-                  name={cameras.find(c => c.id === 'cam1')?.name || "North Intersection"} 
-                  violationType="Illegal Parking" 
+                  id={expandedCamId} 
+                  name={cameras.find(c => c.id === expandedCamId)?.name || "Expanded View"} 
+                  violationType={expandedCamId === 'cam1' ? "Illegal Parking" : expandedCamId === 'cam2' ? "Red Robot" : "Stop Line"} 
                   isPrimary={true}
-                  streamUrl="http://127.0.0.1:8005/video/cam1"
-                  sourceUrl={cameras.find(c => c.id === 'cam1')?.url || "http://192.168.1.45/stream"}
+                  isExpanded={true}
+                  streamUrl={`http://127.0.0.1:8005/video/${expandedCamId}`}
+                  sourceUrl={cameras.find(c => c.id === expandedCamId)?.url || ""}
+                  onExpandToggle={() => setExpandedCamId(null)}
                   onSettingsClick={() => {
-                    const cam = cameras.find(c => c.id === 'cam1') || { id: 'cam1', name: "North Intersection", url: "http://192.168.1.45/stream" };
+                    const cam = cameras.find(c => c.id === expandedCamId) || { id: expandedCamId, name: "Expanded Camera", url: "" };
                     setSettingsCamera(cam);
                     setSettingsUrl(cam.url);
                     setSettingsName(cam.name);
                   }}
                 />
               </div>
+            ) : (
+              <div className="flex gap-4 flex-col xl:flex-row">
+                {/* Primary Focus: Camera 1 */}
+                <div className="flex-[2] min-w-0">
+                  <CameraFeed 
+                    id="cam1" 
+                    name={cameras.find(c => c.id === 'cam1')?.name || "North Intersection"} 
+                    violationType="Illegal Parking" 
+                    isPrimary={true}
+                    streamUrl="http://127.0.0.1:8005/video/cam1"
+                    sourceUrl={cameras.find(c => c.id === 'cam1')?.url || "http://192.168.1.45/stream"}
+                    onExpandToggle={() => setExpandedCamId('cam1')}
+                    onSettingsClick={() => {
+                      const cam = cameras.find(c => c.id === 'cam1') || { id: 'cam1', name: "North Intersection", url: "http://192.168.1.45/stream" };
+                      setSettingsCamera(cam);
+                      setSettingsUrl(cam.url);
+                      setSettingsName(cam.name);
+                    }}
+                  />
+                </div>
 
-              {/* Context Feeds Stack */}
-              <div className="flex-1 flex flex-col gap-4 min-w-0">
-                 <CameraFeed 
-                   id="cam2" 
-                   name={cameras.find(c => c.id === 'cam2')?.name || "East Junction"} 
-                   violationType="Red Robot" 
-                   streamUrl="http://127.0.0.1:8005/video/cam2"
-                   sourceUrl={cameras.find(c => c.id === 'cam2')?.url || "http://192.168.1.46/stream"}
-                   onSettingsClick={() => {
-                     const cam = cameras.find(c => c.id === 'cam2') || { id: 'cam2', name: "East Junction", url: "http://192.168.1.46/stream" };
-                     setSettingsCamera(cam);
-                     setSettingsUrl(cam.url);
-                     setSettingsName(cam.name);
-                   }}
-                 />
-                 <CameraFeed 
-                   id="cam3" 
-                   name={cameras.find(c => c.id === 'cam3')?.name || "South Crosswalk"} 
-                   violationType="Stop Line" 
-                   streamUrl="http://127.0.0.1:8005/video/cam3"
-                   sourceUrl={cameras.find(c => c.id === 'cam3')?.url || "http://192.168.1.47/stream"}
-                   onSettingsClick={() => {
-                     const cam = cameras.find(c => c.id === 'cam3') || { id: 'cam3', name: "South Crosswalk", url: "http://192.168.1.47/stream" };
-                     setSettingsCamera(cam);
-                     setSettingsUrl(cam.url);
-                     setSettingsName(cam.name);
-                   }}
-                 />
+                {/* Context Feeds Stack */}
+                <div className="flex-1 flex flex-col gap-4 min-w-0">
+                   <CameraFeed 
+                     id="cam2" 
+                     name={cameras.find(c => c.id === 'cam2')?.name || "East Junction"} 
+                     violationType="Red Robot" 
+                     streamUrl="http://127.0.0.1:8005/video/cam2"
+                     sourceUrl={cameras.find(c => c.id === 'cam2')?.url || "http://192.168.1.46/stream"}
+                     onExpandToggle={() => setExpandedCamId('cam2')}
+                     onSettingsClick={() => {
+                       const cam = cameras.find(c => c.id === 'cam2') || { id: 'cam2', name: "East Junction", url: "http://192.168.1.46/stream" };
+                       setSettingsCamera(cam);
+                       setSettingsUrl(cam.url);
+                       setSettingsName(cam.name);
+                     }}
+                   />
+                   <CameraFeed 
+                     id="cam3" 
+                     name={cameras.find(c => c.id === 'cam3')?.name || "South Crosswalk"} 
+                     violationType="Stop Line" 
+                     streamUrl="http://127.0.0.1:8005/video/cam3"
+                     sourceUrl={cameras.find(c => c.id === 'cam3')?.url || "http://192.168.1.47/stream"}
+                     onExpandToggle={() => setExpandedCamId('cam3')}
+                     onSettingsClick={() => {
+                       const cam = cameras.find(c => c.id === 'cam3') || { id: 'cam3', name: "South Crosswalk", url: "http://192.168.1.47/stream" };
+                       setSettingsCamera(cam);
+                       setSettingsUrl(cam.url);
+                       setSettingsName(cam.name);
+                     }}
+                   />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Quick Stats / Environment Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
