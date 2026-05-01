@@ -5,3 +5,4 @@ ultralytics
 websockets
 python-multipart
 asyncio
+requests

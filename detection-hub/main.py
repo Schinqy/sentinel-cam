@@ -7,6 +7,7 @@ import sys
 import shutil
 import threading
 import cv2
+import requests
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,70 +41,98 @@ latest_frames = {}
 camera_configs = {}
 active_connections = set()
 
-def start_capture_thread(cam_id, url):
-    """Real OpenCV video capture worker."""
-    def run_capture():
-        print(f"[HUB] Connecting to real stream for {cam_id} using URL: {url}")
-        
-        # Check if URL is an integer (e.g., "0" or "1" for local webcams)
-        source = url
-        try:
-            if str(url).strip().isdigit():
-                source = int(url)
-        except:
-            pass
+url_frames = {}
+active_url_threads = set()
 
-        cap = cv2.VideoCapture(source)
-        while True:
-            if cam_id not in camera_configs or camera_configs[cam_id]['url'] != url:
-                cap.release()
-                break
-            
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(2)
-                cap.open(source)
-                continue
-            
-            ret, jpeg = cv2.imencode('.jpg', frame)
-            if ret:
-                latest_frames[cam_id] = jpeg.tobytes()
+def start_capture_thread(cam_id, url):
+    """Adaptive and deduplicated video capture worker supporting both HTTP/MJPEG and OpenCV."""
+    if url in active_url_threads:
+        print(f"[HUB] Reusing existing capture thread for URL: {url}")
+        return
+
+    active_url_threads.add(url)
+
+    def run_capture():
+        # Adaptive check for HTTP vs other sources
+        is_http = isinstance(url, str) and url.strip().lower().startswith(("http://", "https://"))
+        
+        if is_http:
+            print(f"[HUB] Connecting via MJPEG parser to: {url}")
+            while True:
+                active_urls = {cfg['url'] for cfg in camera_configs.values()}
+                if url not in active_urls:
+                    active_url_threads.discard(url)
+                    break
+                try:
+                    stream = requests.get(url, stream=True, timeout=10)
+                    if stream.status_code != 200:
+                        raise Exception(f"HTTP Status {stream.status_code}")
+                    
+                    buffer = b''
+                    for chunk in stream.iter_content(chunk_size=4096):
+                        buffer += chunk
+                        
+                        while True:
+                            start = buffer.find(b'\xff\xd8')  # JPEG start
+                            if start == -1:
+                                break
+                            
+                            end = buffer.find(b'\xff\xd9', start)  # JPEG end
+                            if end == -1:
+                                break
+                            
+                            jpg = buffer[start:end+2]
+                            buffer = buffer[end+2:]
+                            
+                            # Cache frame for this URL
+                            url_frames[url] = jpg
+                            
+                            # Copy to latest_frames for fallback/compat
+                            for cid, cfg in camera_configs.items():
+                                if cfg.get('url') == url:
+                                    latest_frames[cid] = jpg
+                            
+                        # Break early if config changed
+                        active_urls = {cfg['url'] for cfg in camera_configs.values()}
+                        if url not in active_urls:
+                            break
+                except Exception as e:
+                    print(f"[HUB] HTTP stream error for {url}: {e}, retrying in 3s...")
+                    time.sleep(3)
+        else:
+            print(f"[HUB] Connecting via OpenCV to: {url}")
+            source = url
+            try:
+                if str(url).strip().isdigit():
+                    source = int(url)
+            except:
+                pass
+
+            cap = cv2.VideoCapture(source)
+            while True:
+                active_urls = {cfg['url'] for cfg in camera_configs.values()}
+                if url not in active_urls:
+                    cap.release()
+                    active_url_threads.discard(url)
+                    break
                 
+                ret, frame = cap.read()
+                if not ret:
+                    time.sleep(2)
+                    cap.open(source)
+                    continue
+                
+                ret, jpeg = cv2.imencode('.jpg', frame)
+                if ret:
+                    frame_bytes = jpeg.tobytes()
+                    url_frames[url] = frame_bytes
+                    for cid, cfg in camera_configs.items():
+                        if cfg.get('url') == url:
+                            latest_frames[cid] = frame_bytes
+
     t = threading.Thread(target=run_capture, daemon=True)
     t.start()
 
-
-async def process_violations(cam_id):
-    """Background task to simulate periodic traffic events for active camera streams."""
-    while True:
-        await asyncio.sleep(random.randint(15, 30))
-        frame_bytes = latest_frames.get(cam_id)
-        if frame_bytes:
-            timestamp_str = time.strftime("%H:%M:%S")
-            v_type = "ILLEGAL_PARKING" if cam_id == "cam1" else "TRAFFIC_VIOLATION"
-            confidence = round(random.uniform(0.7, 0.99), 2)
-            
-            image_path = save_violation_frame(frame_bytes, cam_id, v_type)
-            plate_number = mock_extract_plate(frame_bytes)
-            
-            await save_violation(
-                cam_id=cam_id.upper(),
-                v_type=v_type,
-                confidence=confidence,
-                timestamp=timestamp_str,
-                image_path=image_path,
-                plate_number=plate_number
-            )
-
-            await broadcast_violation({
-                "type": v_type,
-                "cam_id": cam_id.upper(),
-                "violation": v_type,
-                "confidence": confidence,
-                "timestamp": timestamp_str,
-                "image_path": image_path,
-                "plate_number": plate_number
-            })
 
 async def broadcast_violation(data):
     if active_connections:
@@ -142,7 +171,6 @@ async def startup_event():
         camera_configs[cam_id] = cam
         latest_frames[cam_id] = None
         start_capture_thread(cam_id, cam['url'])
-        asyncio.create_task(process_violations(cam_id))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

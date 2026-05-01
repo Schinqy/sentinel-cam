@@ -1,7 +1,8 @@
 import aiosqlite
 import os
 
-DB_PATH = "violations.db"
+curr_dir = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(curr_dir, "violations.db")
 
 def load_env_urls():
     urls = {
@@ -45,6 +46,15 @@ async def init_db():
                 plate_number TEXT
             )
         """)
+
+        # Migration: Ensure plate_number column exists if table was created in an older version
+        try:
+            async with db.execute("SELECT plate_number FROM violations LIMIT 1") as cursor:
+                await cursor.fetchone()
+        except aiosqlite.OperationalError:
+            print("[DB] Migrating database: adding 'plate_number' column to 'violations' table")
+            await db.execute("ALTER TABLE violations ADD COLUMN plate_number TEXT")
+
         
         # Cameras Table
         await db.execute("""
@@ -61,18 +71,14 @@ async def init_db():
         """)
         
         urls = load_env_urls()
-        # Seed initial cameras if empty
+        # Only seed cameras on first run — never overwrite existing rows
+        # so that UI config changes survive restarts
         async with db.execute("SELECT COUNT(*) FROM cameras") as cursor:
             count = await cursor.fetchone()
             if count[0] == 0:
                 await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam1", "North Intersection", urls["cam1"]))
                 await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam2", "East Junction", urls["cam2"]))
                 await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam3", "South Crosswalk", urls["cam3"]))
-            else:
-                # Update existing camera URLs from .env
-                await db.execute("UPDATE cameras SET url=? WHERE id='cam1'", (urls["cam1"],))
-                await db.execute("UPDATE cameras SET url=? WHERE id='cam2'", (urls["cam2"],))
-                await db.execute("UPDATE cameras SET url=? WHERE id='cam3'", (urls["cam3"],))
         
         await db.commit()
 
