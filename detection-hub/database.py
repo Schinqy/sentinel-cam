@@ -9,7 +9,15 @@ def load_env_urls():
         "cam2": "http://192.168.1.46/stream",
         "cam3": "http://192.168.1.47/stream"
     }
-    for path in ["../.env", ".env"]:
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(curr_dir)
+    
+    paths = [
+        os.path.join(root_dir, ".env"),
+        os.path.join(curr_dir, ".env"),
+        ".env"
+    ]
+    for path in paths:
         if os.path.exists(path):
             with open(path, "r") as f:
                 for line in f:
