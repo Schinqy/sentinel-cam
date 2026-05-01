@@ -43,14 +43,15 @@ def start_system():
     print("Close this window or press Ctrl+C to stop all services.")
 
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n\n[!] Shutting down SentinelCam...")
-        hub_proc.terminate()
-        # Kill dashboard process tree (npm spawns children)
-        subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
-        print("[✔] Cleanup complete. Goodbye!")
+        input("\n[✔] ALL SERVICES RUNNING. Press Enter at any time to shutdown the system...\n")
+    except (KeyboardInterrupt, EOFError):
+        pass
+
+    print("\n\n[!] Shutting down SentinelCam...")
+    hub_proc.terminate()
+    # Kill dashboard process tree (npm spawns children)
+    subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
+    print("[✔] Cleanup complete. Goodbye!")
 
 if __name__ == "__main__":
     start_system()
