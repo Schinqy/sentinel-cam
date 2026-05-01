@@ -11,7 +11,7 @@ To start the entire system (Detection Hub + Web Dashboard):
    ```bash
    python start_sentinel.py
    ```
-3. Your browser will automatically open to `http://localhost:3000`.
+3. Your browser will automatically open to `http://localhost:3001`.
 
 ## 🛠 Features
 - **Live AI Feeds**: Monitor multiple "intersections" on your cardboard setup.

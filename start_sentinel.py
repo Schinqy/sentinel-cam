@@ -35,7 +35,7 @@ def start_system():
     time.sleep(5)
 
     # 3. Open Browser
-    url = "http://localhost:3000"
+    url = "http://localhost:3001"
     print(f"\n🚀 System is LIVE at {url}")
     webbrowser.open(url)
 
