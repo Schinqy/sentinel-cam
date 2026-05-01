@@ -3,6 +3,25 @@ import os
 
 DB_PATH = "violations.db"
 
+def load_env_urls():
+    urls = {
+        "cam1": "http://192.168.1.45/stream",
+        "cam2": "http://192.168.1.46/stream",
+        "cam3": "http://192.168.1.47/stream"
+    }
+    for path in ["../.env", ".env"]:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                for line in f:
+                    if "=" in line and not line.strip().startswith("#"):
+                        key, val = line.strip().split("=", 1)
+                        key = key.strip()
+                        val = val.strip().strip('"').strip("'")
+                        if key == "CAM1_URL": urls["cam1"] = val
+                        elif key == "CAM2_URL": urls["cam2"] = val
+                        elif key == "CAM3_URL": urls["cam3"] = val
+    return urls
+
 async def init_db():
     """Initializes the database and creates necessary tables."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -33,13 +52,19 @@ async def init_db():
             )
         """)
         
+        urls = load_env_urls()
         # Seed initial cameras if empty
         async with db.execute("SELECT COUNT(*) FROM cameras") as cursor:
             count = await cursor.fetchone()
             if count[0] == 0:
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam1", "North Intersection", "http://192.168.1.45/stream"))
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam2", "East Junction", "http://192.168.1.46/stream"))
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam3", "South Crosswalk", "http://192.168.1.47/stream"))
+                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam1", "North Intersection", urls["cam1"]))
+                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam2", "East Junction", urls["cam2"]))
+                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam3", "South Crosswalk", urls["cam3"]))
+            else:
+                # Update existing camera URLs from .env
+                await db.execute("UPDATE cameras SET url=? WHERE id='cam1'", (urls["cam1"],))
+                await db.execute("UPDATE cameras SET url=? WHERE id='cam2'", (urls["cam2"],))
+                await db.execute("UPDATE cameras SET url=? WHERE id='cam3'", (urls["cam3"],))
         
         await db.commit()
 
