@@ -10,9 +10,10 @@ def start_system():
     hub_dir = os.path.join(root_dir, "detection-hub")
     dash_dir = os.path.join(root_dir, "web-dashboard")
 
-    print("\n" + "="*50)
-    print("   SENTINEL-CAM: CARDBOARD CITY COMMAND CENTER")
-    print("="*50 + "\n")
+    print("\n" + "="*55)
+    print("   A.T.V.D - AUTOMATED TRAFFIC VIOLATION DETECTION")
+    print("   Starting all system services...")
+    print("="*55 + "\n")
 
     # 1. Start Detection Hub
     print("[1/3] Starting Detection Hub (Python)...")

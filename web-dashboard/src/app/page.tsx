@@ -23,6 +23,11 @@ export default function Home() {
   const [settingsName, setSettingsName] = useState('');
   const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
   const [showTestMode, setShowTestMode] = useState(false);
+  const [showAddCamera, setShowAddCamera] = useState(false);
+  const [newCamId, setNewCamId] = useState('');
+  const [newCamName, setNewCamName] = useState('');
+  const [newCamUrl, setNewCamUrl] = useState('');
+  const [addCamError, setAddCamError] = useState('');
 
   const fetchDiagnostics = () => {
     fetch('http://127.0.0.1:8005/diagnostics', {
@@ -98,26 +103,8 @@ export default function Home() {
                 {allViolations.length > 0 ? allViolations[0].timestamp : '--:--:--'}
               </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-               onClick={() => {
-                 const id = prompt("Enter Unique Camera ID (e.g. cam4):");
-                 if (id) {
-                   fetch('http://127.0.0.1:8005/cameras', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
-                     body: JSON.stringify({ id, name: "New Camera", url: "http://127.0.0.1/stream" })
-                   })
-                   .then(res => res.json())
-                   .then(() => {
-                     fetch('http://127.0.0.1:8005/cameras', {
-                       headers: { 'X-API-Key': 'sentinel-secret-2026' }
-                     })
-                       .then(res => res.json())
-                       .then(data => setCameras(data));
-                   });
-                 }
-               }}
+             <button
+               onClick={() => { setNewCamId(''); setNewCamName(''); setNewCamUrl(''); setAddCamError(''); setShowAddCamera(true); }}
                className="px-3 py-1 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"
              >
                + Add Camera
@@ -408,6 +395,60 @@ export default function Home() {
                 className="w-full py-2 bg-error/10 hover:bg-error/20 border border-error/20 text-error font-bold uppercase tracking-wider text-[10px] rounded transition-all cursor-pointer"
               >
                 Delete Camera Node
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Add Camera Modal */}
+      {showAddCamera && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card max-w-md w-full p-6 border-2 border-success/20 flex flex-col gap-4 animate-fade-in bg-slate-950">
+            <div className="flex justify-between items-center border-b border-white/10 pb-2">
+              <h3 className="text-sm font-black italic text-white tracking-wider uppercase">Add New Camera Node</h3>
+              <button onClick={() => setShowAddCamera(false)} className="text-xs text-white/50 hover:text-white uppercase font-bold">Close</button>
+            </div>
+            <p className="text-[10px] text-white/40 uppercase tracking-wide">Enter the details for the new ESP32-CAM node. The stream URL is the IP address of the camera on your WiFi network.</p>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">Camera ID <span className="text-white/20">(unique, e.g. cam4)</span></label>
+                <input type="text" value={newCamId} onChange={e => setNewCamId(e.target.value)} placeholder="cam4"
+                  className="w-full bg-black/40 border border-white/10 text-white rounded p-2 text-xs focus:outline-none focus:border-success/50 transition-colors" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">Display Name</label>
+                <input type="text" value={newCamName} onChange={e => setNewCamName(e.target.value)} placeholder="West Intersection"
+                  className="w-full bg-black/40 border border-white/10 text-white rounded p-2 text-xs focus:outline-none focus:border-success/50 transition-colors" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">Stream URL <span className="text-white/20">(ESP32 IP address)</span></label>
+                <input type="text" value={newCamUrl} onChange={e => setNewCamUrl(e.target.value)} placeholder="http://192.168.1.48/stream"
+                  className="w-full bg-black/40 border border-white/10 text-white rounded p-2 text-xs focus:outline-none focus:border-success/50 transition-colors" />
+              </div>
+              {addCamError && <p className="text-error text-[10px] font-bold">{addCamError}</p>}
+              <button
+                onClick={() => {
+                  if (!newCamId.trim() || !newCamUrl.trim()) { setAddCamError('Camera ID and URL are required.'); return; }
+                  fetch('http://127.0.0.1:8005/cameras', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                    body: JSON.stringify({ id: newCamId.trim(), name: newCamName.trim() || newCamId.trim(), url: newCamUrl.trim() })
+                  })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.status === 'success') {
+                      fetch('http://127.0.0.1:8005/cameras', { headers: { 'X-API-Key': 'sentinel-secret-2026' } })
+                        .then(res => res.json()).then(d => setCameras(d));
+                      setShowAddCamera(false);
+                    } else {
+                      setAddCamError(data.detail || 'Failed to add camera. Is the Hub running?');
+                    }
+                  })
+                  .catch(() => setAddCamError('Cannot connect to Hub. Make sure it is running.'));
+                }}
+                className="w-full py-2 bg-success/20 hover:bg-success/30 border border-success/30 text-success font-black italic uppercase tracking-wider text-xs rounded transition-all cursor-pointer"
+              >
+                Add Camera to System
               </button>
             </div>
           </div>

@@ -7,6 +7,9 @@ import pytesseract
 import cv2
 import numpy as np
 
+# Point to the Tesseract Windows installer path
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
 def extract_plate_text(frame_bytes):
     """
     Extracts text from the image using Tesseract OCR.
