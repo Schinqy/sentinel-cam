@@ -103,6 +103,7 @@ export default function Home() {
                 {allViolations.length > 0 ? allViolations[0].timestamp : '--:--:--'}
               </div>
           </div>
+          <div className="flex items-center gap-2">
              <button
                onClick={() => { setNewCamId(''); setNewCamName(''); setNewCamUrl(''); setAddCamError(''); setShowAddCamera(true); }}
                className="px-3 py-1 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"
