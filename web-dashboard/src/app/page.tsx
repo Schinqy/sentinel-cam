@@ -38,6 +38,15 @@ export default function Home() {
       .catch(err => console.error("Error fetching diagnostics:", err));
   };
 
+  const refreshCameras = () => {
+    fetch('http://127.0.0.1:8005/cameras', {
+      headers: { 'X-API-Key': 'sentinel-secret-2026' }
+    })
+      .then(res => res.json())
+      .then(data => setCameras(data))
+      .catch(err => console.error("Error fetching cameras:", err));
+  };
+
   useEffect(() => {
     setMounted(true);
     // Fetch History
@@ -48,13 +57,7 @@ export default function Home() {
       .then(data => setHistory(data))
       .catch(err => console.error("Error fetching history:", err));
 
-    // Fetch Cameras
-    fetch('http://127.0.0.1:8005/cameras', {
-      headers: { 'X-API-Key': 'sentinel-secret-2026' }
-    })
-      .then(res => res.json())
-      .then(data => setCameras(data))
-      .catch(err => console.error("Error fetching cameras:", err));
+    refreshCameras();
 
     fetchDiagnostics();
     const iv = setInterval(fetchDiagnostics, 5000);
@@ -187,13 +190,14 @@ export default function Home() {
                     key={cam.id}
                     id={cam.id} 
                     name={cam.name} 
-                    violationType={cam.id === 'cam1' ? "Illegal Parking" : cam.id === 'cam2' ? "Red Robot" : "Stop Line"} 
+                    violationType={cam.id === 'cam1' ? 'Illegal Parking' : cam.id === 'cam2' ? 'Signal Violation' : 'Direction Violation'} 
                     isPrimary={true}
                     isExpanded={true}
                     streamUrl={`http://127.0.0.1:8005/video/${cam.id}`}
                     sourceUrl={cam.url}
                     initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                     onExpandToggle={() => setExpandedCamId(null)}
+                    onRoiSaved={refreshCameras}
                     onSettingsClick={() => {
                       setSettingsCamera(cam);
                       setSettingsUrl(cam.url);
@@ -203,18 +207,19 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className={`grid gap-4 ${cameras.length === 1 ? 'grid-cols-1' : cameras.length === 2 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1 xl:grid-cols-2'}`}>
+              <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
                 {cameras.map((cam, idx) => (
-                  <div key={cam.id} className={idx === 0 && cameras.length > 2 ? 'xl:col-span-1 xl:row-span-2' : ''}>
+                  <div key={cam.id}>
                     <CameraFeed 
                       id={cam.id} 
                       name={cam.name} 
-                      violationType={cam.id === 'cam1' ? "Illegal Parking" : cam.id === 'cam2' ? "Red Robot" : "Stop Line"} 
+                      violationType={cam.id === 'cam1' ? 'Illegal Parking' : cam.id === 'cam2' ? 'Signal Violation' : 'Direction Violation'} 
                       isPrimary={idx === 0}
                       streamUrl={`http://127.0.0.1:8005/video/${cam.id}`}
                       sourceUrl={cam.url}
                       initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                       onExpandToggle={() => setExpandedCamId(cam.id)}
+                      onRoiSaved={refreshCameras}
                       onSettingsClick={() => {
                         setSettingsCamera(cam);
                         setSettingsUrl(cam.url);
@@ -224,8 +229,9 @@ export default function Home() {
                   </div>
                 ))}
                 {cameras.length === 0 && (
-                   <div className="flex flex-col items-center justify-center py-20 bg-white/5 border border-dashed border-white/10 rounded-xl">
+                   <div className="flex flex-col items-center justify-center py-20 bg-white/5 border border-dashed border-white/10 rounded-xl xl:col-span-2">
                       <div className="text-white/20 text-xs font-bold uppercase tracking-widest">No Cameras Configured</div>
+                      <div className="text-white/10 text-[10px] mt-1">Hub must be running to load cameras</div>
                    </div>
                 )}
               </div>

@@ -8,7 +8,7 @@ import shutil
 import threading
 import cv2
 import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import aiosqlite
@@ -366,17 +366,13 @@ def create_fallback_frame(cam_id, camera_name, url):
     cv2.line(frame, (width - pad, height - pad), (width - pad - length, height - pad), (100, 100, 100), 1)
     cv2.line(frame, (width - pad, height - pad), (width - pad, height - pad - length), (100, 100, 100), 1)
     
-    # Draw blinking amber text or "SENTINEL-CAM"
-    # Blinks every second
+    # Blinking status text — positioned in CENTER of frame, not top (React header covers top)
+    center_y = height // 2 + 20
     if int(t * 2) % 2 == 0:
-        cv2.putText(frame, "* CONNECTING / NO LIVE FEED", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, "* CONNECTING / NO LIVE FEED", (width//2 - 120, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1, cv2.LINE_AA)
     else:
-        cv2.putText(frame, "  CONNECTING / NO LIVE FEED", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 120, 200), 1, cv2.LINE_AA)
-
-    # Put camera metadata
-    cv2.putText(frame, f"NODE: {cam_id.upper()}", (30, height - pad - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"NAME: {camera_name}", (30, height - pad - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"SOURCE: {url}", (30, height - pad), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (80, 80, 80), 1, cv2.LINE_AA)
+        cv2.putText(frame, "  CONNECTING / NO LIVE FEED", (width//2 - 120, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 120, 200), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"Source: {url}", (width//2 - 100, center_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (80, 80, 80), 1, cv2.LINE_AA)
 
     # Dynamic time
     current_time = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -414,7 +410,7 @@ async def list_cameras():
     return await get_cameras()
 
 @app.post("/cameras/{cam_id}/roi", dependencies=[Depends(verify_api_key)])
-async def update_roi(cam_id: str, roi: list):
+async def update_roi(cam_id: str, roi: list = Body(...)):
     await update_camera_roi(cam_id, roi)
     if cam_id in camera_configs:
         camera_configs[cam_id]['roi_x1'] = roi[0]

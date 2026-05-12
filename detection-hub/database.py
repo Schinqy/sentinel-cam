@@ -64,11 +64,17 @@ async def init_db():
                 url TEXT NOT NULL,
                 roi_x1 REAL DEFAULT 0,
                 roi_y1 REAL DEFAULT 0,
-                roi_x2 REAL DEFAULT 1,
-                roi_y2 REAL DEFAULT 1,
+                roi_x2 REAL DEFAULT 0,
+                roi_y2 REAL DEFAULT 0,
                 is_active INTEGER DEFAULT 1
             )
         """)
+        
+        # Migration: Reset cameras that still have the old default full-frame ROI [0,0,1,1]
+        # A user-drawn zone would never be exactly 0,0,1,1 unless they drew the full frame manually
+        await db.execute(
+            "UPDATE cameras SET roi_x2=0, roi_y2=0 WHERE roi_x1=0 AND roi_y1=0 AND roi_x2=1 AND roi_y2=1"
+        )
         
         urls = load_env_urls()
         # Only seed cameras on first run — never overwrite existing rows
