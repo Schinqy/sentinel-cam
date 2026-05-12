@@ -12,13 +12,14 @@ interface CameraFeedProps {
   isExpanded?: boolean;
   onSettingsClick?: () => void;
   onExpandToggle?: () => void;
+  initialRoi?: [number, number, number, number];
 }
 
-export default function CameraFeed({ id, name, violationType, streamUrl, sourceUrl, isPrimary, isExpanded, onSettingsClick, onExpandToggle }: CameraFeedProps) {
+export default function CameraFeed({ id, name, violationType, streamUrl, sourceUrl, isPrimary, isExpanded, onSettingsClick, onExpandToggle, initialRoi }: CameraFeedProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [error, setError] = useState(false);
-  const [roi, setRoi] = useState<[number, number, number, number] | null>(null);
+  const [roi, setRoi] = useState<[number, number, number, number] | null>(initialRoi || null);
   const [drawing, setDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
   
@@ -135,17 +136,17 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
           </div>
         )}
 
-        {/* Interactive Calibration Overlay */}
-        {isCalibrating && (
+        {/* ROI Overlay (Always visible if ROI exists, dimmed if not calibrating) */}
+        {(roi || isCalibrating) && (
           <div 
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            className="absolute inset-0 bg-primary/10 border-2 border-primary/30 cursor-crosshair z-30 select-none flex items-center justify-center overflow-hidden"
+            className={`absolute inset-0 z-30 select-none flex items-center justify-center overflow-hidden ${isCalibrating ? 'bg-primary/10 border-2 border-primary/30 cursor-crosshair' : 'pointer-events-none'}`}
           >
             {roi ? (
               <div 
-                className="absolute border-2 border-dashed border-primary bg-primary/20 backdrop-blur-[1px] flex items-center justify-center pointer-events-none"
+                className={`absolute border-2 border-dashed flex items-center justify-center pointer-events-none transition-all duration-300 ${isCalibrating ? 'border-primary bg-primary/20' : 'border-white/10 bg-white/5'}`}
                 style={{
                   left: `${roi[0] * 100}%`,
                   top: `${roi[1] * 100}%`,
@@ -153,11 +154,11 @@ export default function CameraFeed({ id, name, violationType, streamUrl, sourceU
                   height: `${(roi[3] - roi[1]) * 100}%`,
                 }}
               >
-                <span className="text-white text-[9px] font-bold bg-primary px-1 py-0.5 rounded shadow whitespace-nowrap">
-                  ROI DETECT ZONE
+                <span className={`text-white text-[8px] font-bold px-1 py-0.5 rounded shadow whitespace-nowrap transition-colors ${isCalibrating ? 'bg-primary' : 'bg-white/10 opacity-40'}`}>
+                  {isCalibrating ? 'ROI DETECT ZONE' : 'ZONE'}
                 </span>
               </div>
-            ) : (
+            ) : isCalibrating && (
               <div className="text-white text-[10px] font-bold bg-primary/80 px-3 py-1 rounded shadow-lg animate-bounce pointer-events-none select-none uppercase tracking-wider">
                 Click & drag to draw ROI
               </div>

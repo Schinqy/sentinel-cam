@@ -3,14 +3,41 @@ import os
 import time
 import random
 
-def mock_extract_plate(frame):
+import pytesseract
+import cv2
+import numpy as np
+
+def extract_plate_text(frame_bytes):
     """
-    Simulates ALPR (License Plate Recognition).
-    In a real scenario, this would use EasyOCR or a specialized model.
+    Extracts text from the image using Tesseract OCR.
+    Perfect for reading high-contrast printed stickers on toy cars.
     """
+    try:
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(frame_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Pre-process for OCR: Grayscale -> Threshold
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        
+        # Run Tesseract
+        # --psm 11 looks for sparse text in any order
+        text = pytesseract.image_to_string(thresh, config='--psm 11').strip()
+        
+        # Clean up the string (remove non-alphanumeric except dash)
+        clean_text = "".join(c for c in text if c.isalnum() or c == '-')
+        
+        if len(clean_text) >= 4:
+            return clean_text.upper()
+        
+    except Exception as e:
+        print(f"[OCR ERROR] {e}")
+        
+    # Fallback to mock if Tesseract fails or finds nothing
     letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
     numbers = "0123456789"
-    plate = "".join(random.choices(letters, k=3)) + "-" + "".join(random.choices(numbers, k=4))
+    plate = "MOCK-" + "".join(random.choices(numbers, k=4))
     return plate
 
 CAPTURES_DIR = "captures"

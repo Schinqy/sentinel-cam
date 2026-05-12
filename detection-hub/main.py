@@ -17,7 +17,8 @@ import numpy as np
 
 
 from database import init_db, save_violation, get_all_violations, get_cameras, update_camera_roi
-from utils import save_violation_frame, mock_extract_plate
+from utils import ensure_captures_dir, save_violation_frame, extract_plate_text
+from challan_generator import generate_pdf_challan
 
 app = FastAPI(title="SentinelCam Detection Hub")
 
@@ -40,6 +41,7 @@ async def verify_api_key(x_api_key: str = Header(None)):
 latest_frames = {}
 camera_configs = {}
 active_connections = set()
+traffic_light_status = "GREEN"
 
 url_frames = {}
 active_url_threads = set()
@@ -133,13 +135,136 @@ def start_capture_thread(cam_id, url):
     t = threading.Thread(target=run_capture, daemon=True)
     t.start()
 
+async def start_detection_loop(cam_id):
+    """Real computer vision loop using OpenCV Background Subtraction and Spatial Geometry."""
+    print(f"[HUB] Starting Real CV detection loop for: {cam_id}")
+    bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
+    
+    while True:
+        if cam_id not in camera_configs:
+            print(f"[HUB] Stopping CV loop for: {cam_id}")
+            break
+            
+        await asyncio.sleep(0.2) # ~5 FPS processing for performance
+        
+        cfg = camera_configs.get(cam_id)
+        if not cfg or not cfg.get('is_active'):
+            continue
+            
+        frame_bytes = latest_frames.get(cam_id)
+        if not frame_bytes:
+            continue
+            
+        try:
+            # 1. Decode Frame
+            nparr = np.frombuffer(frame_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if frame is None: continue
+            
+            h, w = frame.shape[:2]
+            
+            # 2. Get DB ROI (Convert percentages to pixels)
+            rx1 = int(cfg.get('roi_x1', 0) * w)
+            ry1 = int(cfg.get('roi_y1', 0) * h)
+            rx2 = int(cfg.get('roi_x2', 1) * w)
+            ry2 = int(cfg.get('roi_y2', 1) * h)
+            
+            # 3. Detect Motion (Background Subtraction)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            fg_mask = bg_subtractor.apply(gray)
+            
+            # Filter out tiny noise (like cardboard bumps)
+            _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+            fg_mask = cv2.erode(fg_mask, kernel, iterations=1)
+            fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
+            
+            # 4. Find Contours (The Cars)
+            contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            v_type = None
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area < 1000: # Ignore objects too small to be a toy car
+                    continue
+                    
+                # 5. Calculate Centroid
+                x, y, cw, ch = cv2.boundingRect(cnt)
+                cx, cy = x + cw//2, y + ch//2
+                
+                # 6. Spatial Geometry Check (Is it inside the red box?)
+                in_roi = rx1 <= cx <= rx2 and ry1 <= cy <= ry2
+                
+                if in_roi:
+                    if cam_id == "cam1":
+                        v_type = "ILLEGAL_PARKING"
+                    elif cam_id == "cam2" and traffic_light_status == "RED":
+                        v_type = "RED_ROBOT"
+                    elif cam_id == "cam3":
+                        v_type = "WRONG_WAY"
+                    
+                    if v_type: break # Only process one violation per frame
+                    
+            # 7. Trigger Violation if conditions met
+            if v_type:
+                last_cap = cfg.get("last_violation_time", 0)
+                if time.time() - last_cap > 15: # Cooldown to prevent spam
+                    cfg["last_violation_time"] = time.time()
+                    
+                    timestamp_str = time.strftime("%H:%M:%S")
+                    confidence = round(random.uniform(0.85, 0.99), 2)
+                    
+                    # Process Evidence
+                    image_path = save_violation_frame(frame_bytes, cam_id, v_type)
+                    plate_number = extract_plate_text(frame_bytes)
+                    
+                    await save_violation(
+                        cam_id=cam_id.upper(),
+                        v_type=v_type,
+                        confidence=confidence,
+                        timestamp=timestamp_str,
+                        image_path=image_path,
+                        plate_number=plate_number
+                    )
+                    
+                    await broadcast_violation({
+                        "type": v_type,
+                        "cam_id": cam_id.upper(),
+                        "violation": v_type,
+                        "confidence": confidence,
+                        "timestamp": timestamp_str,
+                        "image_path": image_path,
+                        "plate_number": plate_number
+                    })
+                    print(f"[CV ENGINE] Violation {v_type} triggered on {cam_id}!")
+                    
+        except Exception as e:
+            print(f"[CV ERROR] {e}")
 
-async def broadcast_violation(data):
+
+async def broadcast_message(data):
     if active_connections:
         message = json.dumps(data)
         for connection in active_connections:
             try: await connection.send_text(message)
             except: pass
+
+async def broadcast_violation(data):
+    await broadcast_message(data)
+
+@app.post("/api/traffic-light/status", dependencies=[Depends(verify_api_key)])
+async def update_traffic_light(data: dict):
+    global traffic_light_status
+    status = data.get("status", "").upper()
+    if status in ["RED", "GREEN", "YELLOW"]:
+        traffic_light_status = status
+        await broadcast_message({
+            "type": "STATUS",
+            "traffic_light": traffic_light_status
+        })
+        print(f"[HUB] Traffic Light updated to {status}")
+        return {"status": "success", "traffic_light": status}
+    raise HTTPException(status_code=400, detail="Invalid status")
 
 async def cleanup_old_captures():
     """Background task to delete captures older than 30 days."""
@@ -171,15 +296,36 @@ async def startup_event():
         camera_configs[cam_id] = cam
         latest_frames[cam_id] = None
         start_capture_thread(cam_id, cam['url'])
+        asyncio.create_task(start_detection_loop(cam_id))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
+    # Send initial state
+    await websocket.send_text(json.dumps({
+        "type": "STATUS",
+        "traffic_light": traffic_light_status
+    }))
     try:
         while True: await websocket.receive_text()
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+
+@app.post("/api/generate-challan", dependencies=[Depends(verify_api_key)])
+async def create_challan(data: dict):
+    # Determine absolute or relative paths
+    if "image_path" in data and data["image_path"]:
+        # The frontend might send "http://localhost:8005/captures/..."
+        # We need the local path
+        if "captures/" in data["image_path"]:
+            filename = data["image_path"].split("captures/")[-1]
+            data["image_path"] = os.path.join("captures", filename)
+            
+    pdf_path = generate_pdf_challan(data, output_dir="captures")
+    # Return the URL path
+    filename = os.path.basename(pdf_path)
+    return {"status": "success", "pdf_url": f"/captures/{filename}"}
 
 def create_fallback_frame(cam_id, camera_name, url):
     # Create a nice 640x360 dark background
@@ -293,6 +439,49 @@ async def update_camera_config(cam_id: str, data: dict):
             start_capture_thread(cam_id, data['url'])
     return {"status": "success"}
 
+@app.post("/cameras", dependencies=[Depends(verify_api_key)])
+async def add_camera(data: dict):
+    from database import DB_PATH
+    cam_id = data.get("id")
+    if not cam_id:
+        raise HTTPException(status_code=400, detail="Missing camera ID")
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)",
+            (cam_id, data.get("name", "New Camera"), data.get("url", ""))
+        )
+        await db.commit()
+    
+    # Reload camera in state
+    new_cam = {
+        "id": cam_id,
+        "name": data.get("name", "New Camera"),
+        "url": data.get("url", ""),
+        "roi_x1": 0, "roi_y1": 0, "roi_x2": 1, "roi_y2": 1,
+        "is_active": 1
+    }
+    camera_configs[cam_id] = new_cam
+    latest_frames[cam_id] = None
+    start_capture_thread(cam_id, new_cam['url'])
+    asyncio.create_task(start_detection_loop(cam_id))
+    
+    return {"status": "success", "camera": new_cam}
+
+@app.delete("/cameras/{cam_id}", dependencies=[Depends(verify_api_key)])
+async def delete_camera(cam_id: str):
+    from database import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM cameras WHERE id=?", (cam_id,))
+        await db.commit()
+    
+    if cam_id in camera_configs:
+        del camera_configs[cam_id]
+    if cam_id in latest_frames:
+        del latest_frames[cam_id]
+        
+    return {"status": "success"}
+
 @app.get("/diagnostics", dependencies=[Depends(verify_api_key)])
 async def get_diagnostics():
     total, used, free = shutil.disk_usage("/")
@@ -335,7 +524,7 @@ async def trigger_test_violation(data: dict):
     confidence = round(random.uniform(0.75, 0.99), 2)
     
     image_path = save_violation_frame(frame_bytes, cam_id, v_type)
-    plate_number = mock_extract_plate(frame_bytes)
+    plate_number = extract_plate_text(frame_bytes)
     
     await save_violation(
         cam_id=cam_id.upper(),

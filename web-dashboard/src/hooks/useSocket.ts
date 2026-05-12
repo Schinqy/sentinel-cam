@@ -12,6 +12,7 @@ export interface ViolationEvent {
 
 export const useSocket = (url: string) => {
   const [violations, setViolations] = useState<ViolationEvent[]>([]);
+  const [trafficLight, setTrafficLight] = useState<string>('UNKNOWN');
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -29,8 +30,12 @@ export const useSocket = (url: string) => {
 
       socket.onmessage = (event) => {
         try {
-          const data: ViolationEvent = JSON.parse(event.data);
-          setViolations((prev) => [data, ...prev].slice(0, 50)); // Keep last 50
+          const data = JSON.parse(event.data);
+          if (data.type === 'STATUS') {
+            setTrafficLight(data.traffic_light);
+          } else {
+            setViolations((prev) => [data, ...prev].slice(0, 50)); // Keep last 50
+          }
         } catch (error) {
           console.error('[Socket] Error parsing message:', error);
         }
@@ -56,5 +61,5 @@ export const useSocket = (url: string) => {
     };
   }, [url]);
 
-  return { violations, isConnected };
+  return { violations, trafficLight, isConnected };
 };

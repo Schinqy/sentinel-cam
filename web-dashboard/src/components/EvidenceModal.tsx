@@ -10,6 +10,8 @@ interface EvidenceModalProps {
 }
 
 export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData }: EvidenceModalProps) {
+  const [isExporting, setIsExporting] = React.useState(false);
+
   if (!isOpen) return null;
 
   return (
@@ -19,7 +21,7 @@ export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData
           <div>
             <h2 className="text-sm font-black text-white tracking-widest uppercase">EVIDENCE CAPTURE</h2>
             <p className="text-[10px] font-medium text-white/40 uppercase">
-              {violationData?.cam_id} &bull; {violationData?.timestamp} &bull; CONFIDENCE: {Math.round(violationData?.confidence * 100)}%
+              {violationData?.cam_id} &bull; {violationData?.timestamp} &bull; PLATE: <span className="text-primary font-bold">{violationData?.plate_number || 'UNKNOWN'}</span> &bull; CONFIDENCE: {Math.round(violationData?.confidence * 100)}%
             </p>
           </div>
           <button 
@@ -55,8 +57,36 @@ export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData
             >
                 CLOSE
             </button>
-            <button className="px-6 py-2 bg-primary/20 hover:bg-primary/40 text-[10px] font-bold text-primary uppercase tracking-widest rounded transition-all border border-primary/20">
-                EXPORT CITATION
+            <button 
+              onClick={async () => {
+                setIsExporting(true);
+                try {
+                  const res = await fetch('http://127.0.0.1:8005/api/generate-challan', {
+                    method: 'POST',
+                    headers: { 
+                      'Content-Type': 'application/json',
+                      'X-API-Key': 'sentinel-secret-2026'
+                    },
+                    body: JSON.stringify({ ...violationData, image_path: imageUrl })
+                  });
+                  const data = await res.json();
+                  if (data.status === 'success') {
+                    const downloadUrl = `http://127.0.0.1:8005${data.pdf_url}`;
+                    window.open(downloadUrl, '_blank');
+                  } else {
+                    alert("Failed to generate citation.");
+                  }
+                } catch (e) {
+                  console.error(e);
+                  alert("Error generating citation.");
+                } finally {
+                  setIsExporting(false);
+                }
+              }}
+              disabled={isExporting}
+              className={`px-6 py-2 bg-primary/20 hover:bg-primary/40 text-[10px] font-bold text-primary uppercase tracking-widest rounded transition-all border border-primary/20 ${isExporting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+                {isExporting ? 'GENERATING...' : 'EXPORT CITATION'}
             </button>
         </div>
       </div>

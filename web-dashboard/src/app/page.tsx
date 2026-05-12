@@ -10,7 +10,7 @@ import { useSocket, ViolationEvent } from "@/hooks/useSocket";
 type DashboardView = 'dashboard' | 'history';
 
 export default function Home() {
-  const { violations: liveViolations, isConnected } = useSocket('ws://127.0.0.1:8005/ws');
+  const { violations: liveViolations, trafficLight, isConnected } = useSocket('ws://127.0.0.1:8005/ws');
   const [history, setHistory] = useState<ViolationEvent[]>([]);
   const [cameras, setCameras] = useState<any[]>([]);
   const [selectedViolation, setSelectedViolation] = useState<ViolationEvent | null>(null);
@@ -73,13 +73,19 @@ export default function Home() {
       <header className="flex justify-between items-end pb-2 border-b border-white/10 shrink-0">
         <div className="cursor-pointer" onClick={() => setActiveView('dashboard')}>
           <h1 className="text-xl font-black italic tracking-tighter text-white uppercase">
-            SENTINEL<span className="text-primary">CAM</span>
+            A.T.V.D. <span className="text-primary">SYSTEM</span>
           </h1>
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.3em]">
-            AI Traffic Enforcement System v1.0
+            Automated Traffic Violation Detection v1.0
           </p>
         </div>
         <div className="flex gap-4">
+          <div className="text-right border-r border-white/10 pr-4">
+             <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">TRAFFIC LIGHT</div>
+             <div className={`text-[11px] font-black uppercase ${trafficLight === 'RED' ? 'text-error animate-pulse-subtle' : trafficLight === 'GREEN' ? 'text-success' : 'text-warning'}`}>
+               {trafficLight === 'RED' ? '🛑 RED' : trafficLight === 'GREEN' ? '🟢 GREEN' : '🟡 UNKNOWN'}
+             </div>
+          </div>
           <div className="text-right">
              <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">SYSTEM STATUS</div>
              <div className={`text-[10px] font-bold uppercase ${isConnected ? 'text-success animate-pulse-subtle' : 'text-error'}`}>
@@ -92,7 +98,30 @@ export default function Home() {
                 {allViolations.length > 0 ? allViolations[0].timestamp : '--:--:--'}
               </div>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center gap-2">
+            <button
+               onClick={() => {
+                 const id = prompt("Enter Unique Camera ID (e.g. cam4):");
+                 if (id) {
+                   fetch('http://127.0.0.1:8005/cameras', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                     body: JSON.stringify({ id, name: "New Camera", url: "http://127.0.0.1/stream" })
+                   })
+                   .then(res => res.json())
+                   .then(() => {
+                     fetch('http://127.0.0.1:8005/cameras', {
+                       headers: { 'X-API-Key': 'sentinel-secret-2026' }
+                     })
+                       .then(res => res.json())
+                       .then(data => setCameras(data));
+                   });
+                 }
+               }}
+               className="px-3 py-1 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"
+             >
+               + Add Camera
+             </button>
              <button
                onClick={() => setShowTestMode(!showTestMode)}
                className={`px-3 py-1 rounded border text-[10px] font-bold uppercase transition-all ${showTestMode ? 'bg-primary text-white border-primary' : 'bg-transparent text-white/40 border-white/20 hover:text-white'}`}
@@ -165,75 +194,52 @@ export default function Home() {
             
             {expandedCamId ? (
               <div className="flex-1 min-w-0">
-                <CameraFeed 
-                  id={expandedCamId} 
-                  name={cameras.find(c => c.id === expandedCamId)?.name || "Expanded View"} 
-                  violationType={expandedCamId === 'cam1' ? "Illegal Parking" : expandedCamId === 'cam2' ? "Red Robot" : "Stop Line"} 
-                  isPrimary={true}
-                  isExpanded={true}
-                  streamUrl={`http://127.0.0.1:8005/video/${expandedCamId}`}
-                  sourceUrl={cameras.find(c => c.id === expandedCamId)?.url || ""}
-                  onExpandToggle={() => setExpandedCamId(null)}
-                  onSettingsClick={() => {
-                    const cam = cameras.find(c => c.id === expandedCamId) || { id: expandedCamId, name: "Expanded Camera", url: "" };
-                    setSettingsCamera(cam);
-                    setSettingsUrl(cam.url);
-                    setSettingsName(cam.name);
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="flex gap-4 flex-col xl:flex-row">
-                {/* Primary Focus: Camera 1 */}
-                <div className="flex-[2] min-w-0">
+                {cameras.filter(c => c.id === expandedCamId).map(cam => (
                   <CameraFeed 
-                    id="cam1" 
-                    name={cameras.find(c => c.id === 'cam1')?.name || "North Intersection"} 
-                    violationType="Illegal Parking" 
+                    key={cam.id}
+                    id={cam.id} 
+                    name={cam.name} 
+                    violationType={cam.id === 'cam1' ? "Illegal Parking" : cam.id === 'cam2' ? "Red Robot" : "Stop Line"} 
                     isPrimary={true}
-                    streamUrl="http://127.0.0.1:8005/video/cam1"
-                    sourceUrl={cameras.find(c => c.id === 'cam1')?.url || "http://192.168.1.45/stream"}
-                    onExpandToggle={() => setExpandedCamId('cam1')}
+                    isExpanded={true}
+                    streamUrl={`http://127.0.0.1:8005/video/${cam.id}`}
+                    sourceUrl={cam.url}
+                    initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
+                    onExpandToggle={() => setExpandedCamId(null)}
                     onSettingsClick={() => {
-                      const cam = cameras.find(c => c.id === 'cam1') || { id: 'cam1', name: "North Intersection", url: "http://192.168.1.45/stream" };
                       setSettingsCamera(cam);
                       setSettingsUrl(cam.url);
                       setSettingsName(cam.name);
                     }}
                   />
-                </div>
-
-                {/* Context Feeds Stack */}
-                <div className="flex-1 flex flex-col gap-4 min-w-0">
-                   <CameraFeed 
-                     id="cam2" 
-                     name={cameras.find(c => c.id === 'cam2')?.name || "East Junction"} 
-                     violationType="Red Robot" 
-                     streamUrl="http://127.0.0.1:8005/video/cam2"
-                     sourceUrl={cameras.find(c => c.id === 'cam2')?.url || "http://192.168.1.46/stream"}
-                     onExpandToggle={() => setExpandedCamId('cam2')}
-                     onSettingsClick={() => {
-                       const cam = cameras.find(c => c.id === 'cam2') || { id: 'cam2', name: "East Junction", url: "http://192.168.1.46/stream" };
-                       setSettingsCamera(cam);
-                       setSettingsUrl(cam.url);
-                       setSettingsName(cam.name);
-                     }}
-                   />
-                   <CameraFeed 
-                     id="cam3" 
-                     name={cameras.find(c => c.id === 'cam3')?.name || "South Crosswalk"} 
-                     violationType="Stop Line" 
-                     streamUrl="http://127.0.0.1:8005/video/cam3"
-                     sourceUrl={cameras.find(c => c.id === 'cam3')?.url || "http://192.168.1.47/stream"}
-                     onExpandToggle={() => setExpandedCamId('cam3')}
-                     onSettingsClick={() => {
-                       const cam = cameras.find(c => c.id === 'cam3') || { id: 'cam3', name: "South Crosswalk", url: "http://192.168.1.47/stream" };
-                       setSettingsCamera(cam);
-                       setSettingsUrl(cam.url);
-                       setSettingsName(cam.name);
-                     }}
-                   />
-                </div>
+                ))}
+              </div>
+            ) : (
+              <div className={`grid gap-4 ${cameras.length === 1 ? 'grid-cols-1' : cameras.length === 2 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1 xl:grid-cols-2'}`}>
+                {cameras.map((cam, idx) => (
+                  <div key={cam.id} className={idx === 0 && cameras.length > 2 ? 'xl:col-span-1 xl:row-span-2' : ''}>
+                    <CameraFeed 
+                      id={cam.id} 
+                      name={cam.name} 
+                      violationType={cam.id === 'cam1' ? "Illegal Parking" : cam.id === 'cam2' ? "Red Robot" : "Stop Line"} 
+                      isPrimary={idx === 0}
+                      streamUrl={`http://127.0.0.1:8005/video/${cam.id}`}
+                      sourceUrl={cam.url}
+                      initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
+                      onExpandToggle={() => setExpandedCamId(cam.id)}
+                      onSettingsClick={() => {
+                        setSettingsCamera(cam);
+                        setSettingsUrl(cam.url);
+                        setSettingsName(cam.name);
+                      }}
+                    />
+                  </div>
+                ))}
+                {cameras.length === 0 && (
+                   <div className="flex flex-col items-center justify-center py-20 bg-white/5 border border-dashed border-white/10 rounded-xl">
+                      <div className="text-white/20 text-xs font-bold uppercase tracking-widest">No Cameras Configured</div>
+                   </div>
+                )}
               </div>
             )}
 
@@ -379,6 +385,29 @@ export default function Home() {
                 className="w-full py-2 bg-primary hover:bg-primary-dark font-black italic uppercase tracking-wider text-white text-xs rounded transition-all mt-2 cursor-pointer"
               >
                 Update Camera Config
+              </button>
+              
+              <button 
+                onClick={() => {
+                  if (confirm(`Are you sure you want to delete ${settingsCamera.id}?`)) {
+                    fetch(`http://127.0.0.1:8005/cameras/${settingsCamera.id}`, {
+                      method: 'DELETE',
+                      headers: { 'X-API-Key': 'sentinel-secret-2026' }
+                    })
+                    .then(() => {
+                      fetch('http://127.0.0.1:8005/cameras', {
+                        headers: { 'X-API-Key': 'sentinel-secret-2026' }
+                      })
+                        .then(res => res.json())
+                        .then(data => setCameras(data));
+                      setSettingsCamera(null);
+                      if (expandedCamId === settingsCamera.id) setExpandedCamId(null);
+                    });
+                  }
+                }}
+                className="w-full py-2 bg-error/10 hover:bg-error/20 border border-error/20 text-error font-bold uppercase tracking-wider text-[10px] rounded transition-all cursor-pointer"
+              >
+                Delete Camera Node
               </button>
             </div>
           </div>
