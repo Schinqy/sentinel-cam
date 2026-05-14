@@ -73,7 +73,8 @@ class CentroidTracker:
             'first_seen': time.time(),
             'last_seen': time.time(),
             'positions': [centroid],
-            'stationary_start': None
+            'stationary_start': None,
+            'is_violating': False
         }
         self.next_object_id += 1
 
@@ -353,6 +354,7 @@ async def start_detection_loop(cam_id):
                     image_path = save_violation_frame(frame_bytes, cam_id, v_type)
                     plate_number = extract_plate_text(frame_bytes)
                     
+                    meta['is_violating'] = True # Mark for visual feedback
                     v_id = await save_violation(cam_id.upper(), v_type, confidence, timestamp_str, image_path, plate_number)
                     await broadcast_violation({
                         "id": v_id,
@@ -594,28 +596,27 @@ async def video_feed(cam_id: str):
                                 for obj_id, centroid in tracker.objects.items():
                                     meta = tracker.metadata.get(obj_id, {})
                                     cx, cy = centroid
+                                    is_v = meta.get('is_violating', False)
+                                    main_color = (0, 0, 255) if is_v else (0, 255, 0) # Red if violating, Green if OK
                                     
                                     # 1. Draw Centroid Dot & Label
-                                    cv2.circle(frame, (cx, cy), 4, (0, 255, 0), -1)
-                                    cv2.putText(frame, f"ID: {obj_id}", (cx+10, cy-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                                    cv2.circle(frame, (cx, cy), 4, main_color, -1)
+                                    cv2.putText(frame, f"ID: {obj_id}", (cx+10, cy-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, main_color, 1)
 
                                     # 2. Draw Motion Trail (Ghost Path)
                                     positions = meta.get('positions', [])
                                     if len(positions) > 2:
-                                        # Determine trail color (Red if violated, Green if normal)
-                                        # Note: We'd need to track violation state per ID in the hub
-                                        # For now, let's just make it look cool with a Cyan trail
-                                        trail_color = (255, 255, 0) # Cyan
+                                        trail_color = (0, 0, 255) if is_v else (255, 255, 0) # Red or Cyan
                                         for i in range(1, len(positions)):
                                             thickness = int(np.sqrt(10 / float(i + 1)) * 2)
                                             cv2.line(frame, positions[i - 1], positions[i], trail_color, thickness)
                                     
                                     # 3. Draw Directional Vector Arrow
                                     if len(positions) > 5:
-                                        p1 = positions[-5] # Past point
-                                        p2 = positions[-1] # Current point
-                                        # Draw arrow from p1 towards p2, but offset it
-                                        cv2.arrowedLine(frame, p1, p2, (0, 255, 255), 2, tipLength=0.5)
+                                        p1 = positions[-5]
+                                        p2 = positions[-1]
+                                        arrow_color = (0, 0, 255) if is_v else (0, 255, 255) # Red or Yellow
+                                        cv2.arrowedLine(frame, p1, p2, arrow_color, 2, tipLength=0.5)
 
                                     # 4. Stationary / Violation Status
                                     if meta.get('stationary_start'):
