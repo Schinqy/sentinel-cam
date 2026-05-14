@@ -77,14 +77,17 @@ async def init_db():
         )
         
         urls = load_env_urls()
-        # Only seed cameras on first run — never overwrite existing rows
-        # so that UI config changes survive restarts
-        async with db.execute("SELECT COUNT(*) FROM cameras") as cursor:
-            count = await cursor.fetchone()
-            if count[0] == 0:
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam1", "North Intersection", urls["cam1"]))
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam2", "East Junction", urls["cam2"]))
-                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", ("cam3", "South Crosswalk", urls["cam3"]))
+        # Seed cameras or update URLs from .env
+        async with db.execute("SELECT id, url FROM cameras") as cursor:
+            existing_cams = {row[0]: row[1] for row in await cursor.fetchall()}
+            
+        for cid, name in [("cam1", "North Intersection"), ("cam2", "East Junction"), ("cam3", "South Crosswalk")]:
+            new_url = urls.get(cid)
+            if cid not in existing_cams:
+                await db.execute("INSERT INTO cameras (id, name, url) VALUES (?, ?, ?)", (cid, name, new_url))
+            elif existing_cams[cid] != new_url:
+                print(f"[DB] Updating {cid} URL to: {new_url}")
+                await db.execute("UPDATE cameras SET url=? WHERE id=?", (new_url, cid))
         
         await db.commit()
 

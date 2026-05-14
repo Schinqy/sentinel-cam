@@ -33,6 +33,11 @@ export const useSocket = (url: string) => {
           const data = JSON.parse(event.data);
           if (data.type === 'STATUS') {
             setTrafficLight(data.traffic_light);
+          } else if (data.type === 'SYSTEM_ARMED') {
+            // This is handled by polling diagnostics in the main page,
+            // but we could also expose it here if we wanted reactive state.
+            // For now, let's just make sure it doesn't crash.
+            console.log("[Socket] System Armed State:", data.armed);
           } else {
             setViolations((prev) => [data, ...prev].slice(0, 50)); // Keep last 50
           }

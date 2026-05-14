@@ -54,8 +54,8 @@ def start_system():
         except Exception:
             pass
 
-    hub_proc.terminate()
-    # Kill dashboard process tree (npm spawns children)
+    # Kill processes aggressively on Windows
+    subprocess.run(f"taskkill /F /T /PID {hub_proc.pid}", shell=True, capture_output=True)
     subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
     print("[✔] Cleanup complete. Goodbye!")
 

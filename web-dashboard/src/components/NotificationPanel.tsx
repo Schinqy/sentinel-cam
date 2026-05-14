@@ -45,16 +45,10 @@ export default function NotificationPanel({ violations, onViolationClick, onView
                  <div className="text-[10px] font-mono text-success">{Math.round(log.confidence * 100)}%</div>
               </div>
               
-              {/* Snapshot Placeholder - In production this would be a real URL from the hub */}
-              <div className="aspect-video bg-black/40 rounded border border-white/5 overflow-hidden relative">
-                 <div className="absolute inset-0 flex items-center justify-center z-10">
-                    <div className="px-2 py-1 bg-black/60 backdrop-blur-sm rounded text-[8px] font-mono text-white/60">
-                      SNAPSHOT_{index + 1}.JPG
-                    </div>
-                 </div>
+              <div className="aspect-video bg-black/40 rounded border border-white/5 overflow-hidden relative mt-2">
                   <img 
-                    src={log.image_path ? `http://localhost:8000/${log.image_path}` : `https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=400`} 
-                    className="w-full h-full object-cover opacity-40 group-hover:opacity-70 transition-opacity" 
+                    src={log.image_path ? `http://localhost:8005/${log.image_path}` : `https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=400`} 
+                    className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
                     alt="Violation"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;

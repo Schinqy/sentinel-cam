@@ -29,13 +29,70 @@ export default function Home() {
   const [newCamUrl, setNewCamUrl] = useState('');
   const [addCamError, setAddCamError] = useState('');
 
+  const [isArmed, setIsArmed] = useState(true);
+  const [isDebugEnabled, setIsDebugEnabled] = useState(true);
+  const [isMaskEnabled, setIsMaskEnabled] = useState(false);
+
   const fetchDiagnostics = () => {
     fetch('http://127.0.0.1:8005/diagnostics', {
       headers: { 'X-API-Key': 'sentinel-secret-2026' }
     })
       .then(res => res.json())
-      .then(data => setDiagnostics(data))
+      .then(data => {
+        setDiagnostics(data);
+        if (data.system_armed !== undefined) setIsArmed(data.system_armed);
+      })
       .catch(err => console.error("Error fetching diagnostics:", err));
+  };
+
+  const toggleArm = () => {
+    const newState = !isArmed;
+    fetch('http://127.0.0.1:8005/api/system/arm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+      body: JSON.stringify({ armed: newState })
+    })
+    .then(res => res.json())
+    .then(() => setIsArmed(newState))
+    .catch(err => console.error(err));
+  };
+
+  const toggleDebug = () => {
+    const newState = !isDebugEnabled;
+    fetch('http://127.0.0.1:8005/api/system/debug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+      body: JSON.stringify({ enabled: newState })
+    })
+    .then(res => res.json())
+    .then(() => setIsDebugEnabled(newState))
+    .catch(err => console.error(err));
+  };
+
+  const toggleMask = () => {
+    const newState = !isMaskEnabled;
+    fetch('http://127.0.0.1:8005/api/system/mask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+      body: JSON.stringify({ enabled: newState })
+    })
+    .then(res => res.json())
+    .then(() => setIsMaskEnabled(newState))
+    .catch(err => console.error(err));
+  };
+
+  const clearHistory = () => {
+    if (confirm("NUKE ALL HISTORY? This will delete all database records and captured images.")) {
+      fetch('http://127.0.0.1:8005/api/violations/clear', {
+        method: 'DELETE',
+        headers: { 'X-API-Key': 'sentinel-secret-2026' }
+      })
+      .then(() => {
+        setHistory([]);
+        refreshCameras();
+      })
+      .catch(err => console.error(err));
+    }
   };
 
   const refreshCameras = () => {
@@ -107,6 +164,30 @@ export default function Home() {
               </div>
           </div>
           <div className="flex items-center gap-2">
+             <button 
+               onClick={clearHistory}
+               className="px-3 py-1 rounded bg-error/10 hover:bg-error/20 text-error border border-error/20 text-[10px] font-bold uppercase transition-all"
+             >
+               ⚠ Clear History
+             </button>
+             <button
+               onClick={toggleMask}
+               className={`px-3 py-1 rounded border text-[10px] font-bold uppercase transition-all ${isMaskEnabled ? 'bg-primary text-white border-primary' : 'bg-transparent text-white/40 border-white/20 hover:text-white'}`}
+             >
+               {isMaskEnabled ? '📷 MASK: ON' : '📷 MASK: OFF'}
+             </button>
+             <button
+               onClick={toggleDebug}
+               className={`px-3 py-1 rounded border text-[10px] font-bold uppercase transition-all ${isDebugEnabled ? 'bg-primary/20 text-primary border-primary/40' : 'bg-transparent text-white/40 border-white/20 hover:text-white'}`}
+             >
+               {isDebugEnabled ? '👁 AI VIEW: ON' : '👁 AI VIEW: OFF'}
+             </button>
+             <button
+               onClick={toggleArm}
+               className={`px-3 py-1 rounded border text-[10px] font-bold uppercase transition-all ${isArmed ? 'bg-success/20 text-success border-success/40' : 'bg-error/20 text-error border-error/40 animate-pulse'}`}
+             >
+               {isArmed ? '🟢 SYSTEM ARMED' : '🔴 SYSTEM DISARMED'}
+             </button>
              <button
                onClick={() => { setNewCamId(''); setNewCamName(''); setNewCamUrl(''); setAddCamError(''); setShowAddCamera(true); }}
                className="px-3 py-1 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"

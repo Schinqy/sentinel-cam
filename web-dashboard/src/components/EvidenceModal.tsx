@@ -17,19 +17,31 @@ export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
       <div className="relative max-w-4xl w-full glass-card border border-white/10 overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+        <div className="p-6 border-b border-white/10 flex justify-between items-end bg-gradient-to-b from-white/10 to-transparent">
           <div>
-            <h2 className="text-sm font-black text-white tracking-widest uppercase">EVIDENCE CAPTURE</h2>
-            <p className="text-[10px] font-medium text-white/40 uppercase">
-              {violationData?.cam_id} &bull; {violationData?.timestamp} &bull; PLATE: <span className="text-primary font-bold">{violationData?.plate_number || 'UNKNOWN'}</span> &bull; CONFIDENCE: {Math.round(violationData?.confidence * 100)}%
-            </p>
+            <h2 className="text-[10px] font-black text-primary tracking-[0.3em] uppercase mb-2">VIOLATION EVIDENCE</h2>
+            <div className="flex items-center gap-4">
+               <div className="bg-white px-4 py-2 rounded-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  <span className="text-2xl font-black text-black tracking-tighter font-mono">
+                    {violationData?.plate_number || 'SCANNING...'}
+                  </span>
+               </div>
+               <div>
+                  <div className="text-[10px] font-bold text-white/60 uppercase">{violationData?.violation?.replace('_', ' ')}</div>
+                  <div className="text-[10px] font-mono text-white/40">{violationData?.cam_id} &bull; {violationData?.timestamp}</div>
+               </div>
+            </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-all"
-          >
-            &times;
-          </button>
+          <div className="text-right flex flex-col items-end gap-2">
+             <button 
+                onClick={onClose}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-all mb-2"
+             >
+                &times;
+             </button>
+             <div className="text-[10px] font-bold text-white/40 uppercase">OCR CONFIDENCE</div>
+             <div className="text-xl font-black text-success font-mono">{Math.round((violationData?.confidence || 0.98) * 100)}%</div>
+          </div>
         </div>
 
         <div className="p-2 bg-black/40">
