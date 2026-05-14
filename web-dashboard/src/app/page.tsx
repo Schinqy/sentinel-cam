@@ -310,6 +310,7 @@ export default function Home() {
                     initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                     onExpandToggle={() => setExpandedCamId(null)}
                     onRoiSaved={refreshCameras}
+                    onSettingsClick={() => {
                       setSettingsCamera(cam);
                       setSettingsUrl(cam.url);
                       setSettingsName(cam.name);
@@ -332,6 +333,7 @@ export default function Home() {
                       initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                       onExpandToggle={() => setExpandedCamId(cam.id)}
                       onRoiSaved={refreshCameras}
+                      onSettingsClick={() => {
                         setSettingsCamera(cam);
                         setSettingsUrl(cam.url);
                         setSettingsName(cam.name);
