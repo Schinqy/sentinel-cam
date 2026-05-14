@@ -595,15 +595,29 @@ async def video_feed(cam_id: str):
                                     meta = tracker.metadata.get(obj_id, {})
                                     cx, cy = centroid
                                     
-                                    # Draw centroid dot
+                                    # 1. Draw Centroid Dot & Label
                                     cv2.circle(frame, (cx, cy), 4, (0, 255, 0), -1)
-                                    cv2.putText(frame, "TRACKING", (cx+10, cy-22), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 0), 1)
-                                    
-                                    # Draw bounding box (estimate from last contour or just draw around centroid)
-                                    # For better accuracy, we'd need to pass rects to the feed, but 40x40 around centroid is okay for labels
                                     cv2.putText(frame, f"ID: {obj_id}", (cx+10, cy-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+
+                                    # 2. Draw Motion Trail (Ghost Path)
+                                    positions = meta.get('positions', [])
+                                    if len(positions) > 2:
+                                        # Determine trail color (Red if violated, Green if normal)
+                                        # Note: We'd need to track violation state per ID in the hub
+                                        # For now, let's just make it look cool with a Cyan trail
+                                        trail_color = (255, 255, 0) # Cyan
+                                        for i in range(1, len(positions)):
+                                            thickness = int(np.sqrt(10 / float(i + 1)) * 2)
+                                            cv2.line(frame, positions[i - 1], positions[i], trail_color, thickness)
                                     
-                                    # Stationary label
+                                    # 3. Draw Directional Vector Arrow
+                                    if len(positions) > 5:
+                                        p1 = positions[-5] # Past point
+                                        p2 = positions[-1] # Current point
+                                        # Draw arrow from p1 towards p2, but offset it
+                                        cv2.arrowedLine(frame, p1, p2, (0, 255, 255), 2, tipLength=0.5)
+
+                                    # 4. Stationary / Violation Status
                                     if meta.get('stationary_start'):
                                         dur = round(time.time() - meta['stationary_start'], 1)
                                         cv2.putText(frame, f"STATIONARY: {dur}s", (cx+10, cy+5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
