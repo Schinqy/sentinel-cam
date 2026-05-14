@@ -598,6 +598,8 @@ async def video_feed(cam_id: str):
                             cv2.putText(frame, f"Frame {learning_counters[cam_id]}/50", (w//2 - 40, h//2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
                         else:
                             # Draw ROI
+                            rx1, ry1 = int(cfg.get('roi_x1', 0) * w), int(cfg.get('roi_y1', 0) * h)
+                            rx2, ry2 = int(cfg.get('roi_x2', 1) * w), int(cfg.get('roi_y2', 1) * h)
                             cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (255, 100, 0), 2)
                             cv2.putText(frame, "DETECTION ZONE", (rx1, ry1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 100, 0), 1)
                             
