@@ -333,7 +333,8 @@ async def start_detection_loop(cam_id):
             # 4. Behavioral Analysis
             for (obj_id, centroid) in objects.items():
                 if obj_id in violated_ids: continue
-                if is_cooling: continue # Skip detection during cooling break
+                
+                # We still track movement during cooldown, but we skip the actual violation logic
                 
                 cx, cy = centroid
                 in_roi = rx1 <= cx <= rx2 and ry1 <= cy <= ry2
@@ -349,11 +350,13 @@ async def start_detection_loop(cam_id):
                 
                 # RULE: Red Robot (Signal state + Crossing)
                 elif cam_id == "cam2" and traffic_light_status == "RED":
-                    # If it's in the ROI while RED, it's already a violation in this simplified model
-                    # but we check if it has moved into the ROI recently
-                    if len(meta['positions']) > 3:
-                        v_type = "RED_ROBOT"
-                
+                    # Simple rule: if moving significantly across ROI on Red
+                    if meta['positions'] and len(meta['positions']) > 5:
+                        p_start = meta['positions'][0]
+                        p_curr = meta['positions'][-1]
+                        if abs(p_curr[1] - p_start[1]) > 40:
+                            v_type = "RED_ROBOT"
+
                 # RULE: Wrong Way (Trajectory Analysis)
                 elif cam_id == "cam3":
                     if len(meta['positions']) > 8:
@@ -377,9 +380,20 @@ async def start_detection_loop(cam_id):
                             is_wrong = True
                             
                         if is_wrong:
+                            # TRIGGER VIOLATION (Only if NOT cooling down)
+                            if is_cooling:
+                                # We still mark it as violating for visual feedback, but don't save to DB
+                                meta['is_violating'] = True
+                                continue
+                            
                             v_type = "WRONG_WAY"
                 
                 if v_type:
+                    # TRIGGER VIOLATION (Only if NOT cooling down)
+                    if is_cooling:
+                        meta['is_violating'] = True
+                        continue
+
                     violated_ids.add(obj_id)
                     timestamp_str = time.strftime("%H:%M:%S")
                     confidence = round(random.uniform(0.92, 0.99), 2)
