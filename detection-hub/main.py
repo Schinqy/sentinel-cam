@@ -342,8 +342,21 @@ async def start_detection_loop(cam_id):
                     if len(meta['positions']) > 8:
                         start_pos = meta['positions'][0]
                         curr_pos = meta['positions'][-1]
-                        # Assume Wrong Way is moving UP (Y decreasing)
-                        if curr_pos[1] < start_pos[1] - 30: # Moved up at least 30px
+                        
+                        # Support configurable directions (Default is UP)
+                        direction = cfg.get('enforce_direction', 'UP')
+                        
+                        is_wrong = False
+                        if direction == 'UP' and curr_pos[1] < start_pos[1] - 30:
+                            is_wrong = True
+                        elif direction == 'DOWN' and curr_pos[1] > start_pos[1] + 30:
+                            is_wrong = True
+                        elif direction == 'LEFT' and curr_pos[0] < start_pos[0] - 30:
+                            is_wrong = True
+                        elif direction == 'RIGHT' and curr_pos[0] > start_pos[0] + 30:
+                            is_wrong = True
+                            
+                        if is_wrong:
                             v_type = "WRONG_WAY"
                 
                 if v_type:
@@ -585,10 +598,29 @@ async def video_feed(cam_id: str):
                             cv2.putText(frame, f"Frame {learning_counters[cam_id]}/50", (w//2 - 40, h//2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
                         else:
                             # Draw ROI
-                            rx1, ry1 = int(cfg.get('roi_x1',0)*w), int(cfg.get('roi_y1',0)*h)
-                            rx2, ry2 = int(cfg.get('roi_x2',1)*w), int(cfg.get('roi_y2',1)*h)
                             cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (255, 100, 0), 2)
                             cv2.putText(frame, "DETECTION ZONE", (rx1, ry1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 100, 0), 1)
+                            
+                            # Direction Indicator for Cam 3 (Wrong Way)
+                            if cam_id == "cam3":
+                                # Draw a large "Correct Flow" arrow
+                                mid_x = (rx1 + rx2) // 2
+                                mid_y = (ry1 + ry2) // 2
+                                direction = cfg.get('enforce_direction', 'UP')
+                                
+                                # Note: Arrow points in the LEGAL direction (opposite of wrong way)
+                                # Actually, user might prefer arrow to point in CORRECT direction.
+                                # Let's draw arrow in CORRECT direction.
+                                if direction == 'UP': # Wrong is UP, so Correct is DOWN
+                                    cv2.arrowedLine(frame, (mid_x, ry1 + 10), (mid_x, ry2 - 10), (255, 100, 0), 2, tipLength=0.3)
+                                elif direction == 'DOWN': # Wrong is DOWN, Correct is UP
+                                    cv2.arrowedLine(frame, (mid_x, ry2 - 10), (mid_x, ry1 + 10), (255, 100, 0), 2, tipLength=0.3)
+                                elif direction == 'LEFT': # Wrong is LEFT, Correct is RIGHT
+                                    cv2.arrowedLine(frame, (rx1 + 10, mid_y), (rx2 - 10, mid_y), (255, 100, 0), 2, tipLength=0.3)
+                                elif direction == 'RIGHT': # Wrong is RIGHT, Correct is LEFT
+                                    cv2.arrowedLine(frame, (rx2 - 10, mid_y), (rx1 + 10, mid_y), (255, 100, 0), 2, tipLength=0.3)
+                                
+                                cv2.putText(frame, "LEGAL FLOW", (rx1 + 5, ry1 + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 100, 0), 1)
                             
                             # Draw Objects
                             tracker = trackers.get(cam_id)
@@ -649,10 +681,14 @@ async def update_roi(cam_id: str, roi: list = Body(...)):
 async def update_camera_config(cam_id: str, data: dict):
     from database import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE cameras SET name=?, url=? WHERE id=?", (data.get("name"), data.get("url"), cam_id))
+        await db.execute(
+            "UPDATE cameras SET name=?, url=?, enforce_direction=? WHERE id=?", 
+            (data.get("name"), data.get("url"), data.get("enforce_direction", "UP"), cam_id)
+        )
         await db.commit()
     if cam_id in camera_configs:
         if "name" in data: camera_configs[cam_id]['name'] = data['name']
+        if "enforce_direction" in data: camera_configs[cam_id]['enforce_direction'] = data['enforce_direction']
         if "url" in data:
             camera_configs[cam_id]['url'] = data['url']
             start_capture_thread(cam_id, data['url'])

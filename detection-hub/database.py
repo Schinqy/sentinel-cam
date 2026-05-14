@@ -66,9 +66,18 @@ async def init_db():
                 roi_y1 REAL DEFAULT 0,
                 roi_x2 REAL DEFAULT 0,
                 roi_y2 REAL DEFAULT 0,
-                is_active INTEGER DEFAULT 1
+                is_active INTEGER DEFAULT 1,
+                enforce_direction TEXT DEFAULT 'UP'
             )
         """)
+        
+        # Migration: Ensure enforce_direction column exists
+        try:
+            async with db.execute("SELECT enforce_direction FROM cameras LIMIT 1") as cursor:
+                await cursor.fetchone()
+        except aiosqlite.OperationalError:
+            print("[DB] Migrating database: adding 'enforce_direction' column to 'cameras' table")
+            await db.execute("ALTER TABLE cameras ADD COLUMN enforce_direction TEXT DEFAULT 'UP'")
         
         # Migration: Reset cameras that still have the old default full-frame ROI [0,0,1,1]
         # A user-drawn zone would never be exactly 0,0,1,1 unless they drew the full frame manually

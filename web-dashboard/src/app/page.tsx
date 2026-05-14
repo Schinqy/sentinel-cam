@@ -21,6 +21,7 @@ export default function Home() {
   const [diagnostics, setDiagnostics] = useState<any | null>(null);
   const [settingsUrl, setSettingsUrl] = useState('');
   const [settingsName, setSettingsName] = useState('');
+  const [settingsDirection, setSettingsDirection] = useState('UP');
   const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
   const [showTestMode, setShowTestMode] = useState(false);
   const [showAddCamera, setShowAddCamera] = useState(false);
@@ -215,20 +216,38 @@ export default function Home() {
               <span className="text-[9px] font-black text-primary uppercase">Hardware Simulation</span>
             </div>
             <button 
-              onClick={() => fetch('http://10.35.14.40/setstate?val=RED').catch(e => console.error(e))}
-              className="px-3 py-1.5 rounded bg-error/20 hover:bg-error/30 text-error border border-error/40 text-[10px] font-bold uppercase transition-all"
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/api/traffic-light/status', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ status: 'RED' })
+                }).catch(e => console.error(e));
+              }}
+              className={`px-3 py-1.5 rounded bg-error/20 hover:bg-error/30 text-error border border-error/40 text-[10px] font-bold uppercase transition-all ${trafficLight === 'RED' ? 'ring-2 ring-error ring-offset-2 ring-offset-black' : ''}`}
             >
               Set RED
             </button>
             <button 
-              onClick={() => fetch('http://10.35.14.40/setstate?val=GREEN').catch(e => console.error(e))}
-              className="px-3 py-1.5 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/api/traffic-light/status', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ status: 'GREEN' })
+                }).catch(e => console.error(e));
+              }}
+              className={`px-3 py-1.5 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all ${trafficLight === 'GREEN' ? 'ring-2 ring-success ring-offset-2 ring-offset-black' : ''}`}
             >
               Set GREEN
             </button>
             <button 
-              onClick={() => fetch('http://10.35.14.40/setstate?val=YELLOW').catch(e => console.error(e))}
-              className="px-3 py-1.5 rounded bg-warning/20 hover:bg-warning/30 text-warning border border-warning/40 text-[10px] font-bold uppercase transition-all"
+              onClick={() => {
+                fetch('http://127.0.0.1:8005/api/traffic-light/status', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
+                  body: JSON.stringify({ status: 'YELLOW' })
+                }).catch(e => console.error(e));
+              }}
+              className={`px-3 py-1.5 rounded bg-warning/20 hover:bg-warning/30 text-warning border border-warning/40 text-[10px] font-bold uppercase transition-all ${trafficLight === 'YELLOW' ? 'ring-2 ring-warning ring-offset-2 ring-offset-black' : ''}`}
             >
               Set YELLOW
             </button>
@@ -291,10 +310,10 @@ export default function Home() {
                     initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                     onExpandToggle={() => setExpandedCamId(null)}
                     onRoiSaved={refreshCameras}
-                    onSettingsClick={() => {
                       setSettingsCamera(cam);
                       setSettingsUrl(cam.url);
                       setSettingsName(cam.name);
+                      setSettingsDirection(cam.enforce_direction || 'UP');
                     }}
                   />
                 ))}
@@ -313,10 +332,10 @@ export default function Home() {
                       initialRoi={[cam.roi_x1, cam.roi_y1, cam.roi_x2, cam.roi_y2]}
                       onExpandToggle={() => setExpandedCamId(cam.id)}
                       onRoiSaved={refreshCameras}
-                      onSettingsClick={() => {
                         setSettingsCamera(cam);
                         setSettingsUrl(cam.url);
                         setSettingsName(cam.name);
+                        setSettingsDirection(cam.enforce_direction || 'UP');
                       }}
                     />
                   </div>
@@ -445,6 +464,24 @@ export default function Home() {
                   className="w-full bg-black/40 border border-white/10 text-white rounded p-2 text-xs focus:outline-none focus:border-primary/50 transition-colors"
                 />
               </div>
+              {settingsCamera.id === 'cam3' && (
+                <div>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">
+                    Enforce Wrong Way Direction
+                  </label>
+                  <select 
+                    value={settingsDirection} 
+                    onChange={(e) => setSettingsDirection(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 text-white rounded p-2 text-xs focus:outline-none focus:border-primary/50 transition-colors uppercase font-bold"
+                  >
+                    <option value="UP">Bottom to Top (Away)</option>
+                    <option value="DOWN">Top to Bottom (Towards)</option>
+                    <option value="LEFT">Right to Left</option>
+                    <option value="RIGHT">Left to Right</option>
+                  </select>
+                  <p className="text-[9px] text-white/30 mt-1 italic uppercase tracking-tighter">Vehicles moving in this direction will trigger a violation.</p>
+                </div>
+              )}
               <button 
                 onClick={() => {
                   fetch(`http://127.0.0.1:8005/cameras/${settingsCamera.id}/config`, {
@@ -455,7 +492,8 @@ export default function Home() {
                     },
                     body: JSON.stringify({
                       name: settingsName,
-                      url: settingsUrl
+                      url: settingsUrl,
+                      enforce_direction: settingsDirection
                     })
                   })
                   .then(res => res.json())
