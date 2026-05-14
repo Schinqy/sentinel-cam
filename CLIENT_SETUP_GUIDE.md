@@ -36,33 +36,31 @@ Before running the system, install the following tools:
 
 ---
 
-## 🚀 3. Installation Steps
+## 🚀 3. Quick Start (Windows)
+1. **Clone the Repo**:
+   ```bash
+   git clone https://github.com/Schinqy/sentinel-cam.git
+   cd sentinel-cam
+   ```
 
-### Step 1: Clone the Repository
-Open your terminal (PowerShell or Command Prompt) and run:
-```bash
-git clone https://github.com/your-repo/sentinel-cam.git
-cd sentinel-cam
-```
+2. **Install Everything**:
+   ```bash
+   # Install Python dependencies
+   pip install -r requirements.txt
 
-### Step 2: Set Up the Detection Hub
-Install the Python AI dependencies:
-```bash
-cd detection-hub
-pip install -r requirements.txt
-```
+   # Install Dashboard dependencies
+   cd web-dashboard
+   npm install
+   cd ..
+   ```
 
-### Step 3: Set Up the Web Dashboard
-Install the frontend dependencies:
-```bash
-cd ../web-dashboard
-npm install
-```
+3. **Configure**:
+   Open the `.env` file in the root folder and update the `CAM_URL` fields with your camera IPs.
 
----
-
-## ⚙️ 4. Configuration (.env)
-Create a `.env` file in the root directory (or edit the existing one) to link your cameras:
+4. **Launch**:
+   ```bash
+   python start_sentinel.py
+   ```
 
 ```env
 # URL for ESP32-CAM or IP Camera

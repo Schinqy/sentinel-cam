@@ -1,0 +1,18 @@
+# Core Web Server
+fastapi
+uvicorn
+python-multipart
+websockets
+
+# AI & Computer Vision
+opencv-python
+easyocr
+numpy
+scipy
+
+# Utilities & Database
+aiohttp
+aiosqlite
+requests
+Pillow
+reportlab
