@@ -17,12 +17,12 @@ VIOLATION_DESCRIPTIONS = {
 }
 
 FINE_AMOUNTS = {
-    "ILLEGAL_PARKING":    "R 500.00",
-    "SIGNAL_VIOLATION":   "R 1 500.00",
-    "DIRECTION_VIOLATION":"R 2 000.00",
-    "RED_ROBOT":          "R 1 500.00",
-    "STOP_LINE":          "R 750.00",
-    "WRONG_WAY":          "R 2 000.00",
+    "ILLEGAL_PARKING":    "$ 20.00",
+    "SIGNAL_VIOLATION":   "$ 80.00",
+    "DIRECTION_VIOLATION":"$ 100.00",
+    "RED_ROBOT":          "$ 80.00",
+    "STOP_LINE":          "$ 40.00",
+    "WRONG_WAY":          "$ 100.00",
 }
 
 def generate_pdf_challan(violation_data, output_dir="captures"):
@@ -146,7 +146,7 @@ def generate_pdf_challan(violation_data, output_dir="captures"):
     story.append(o_table)
 
     # ── FINE AMOUNT ───────────────────────────────────────
-    fine = FINE_AMOUNTS.get(v_type, "R 500.00")
+    fine = FINE_AMOUNTS.get(v_type, "$ 50.00")
     story.append(Spacer(1, 6*mm))
     fine_data = [["PENALTY AMOUNT", fine]]
     fine_table = Table(fine_data, colWidths=[85*mm, 85*mm])
@@ -168,6 +168,16 @@ def generate_pdf_challan(violation_data, output_dir="captures"):
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("PHOTOGRAPHIC EVIDENCE", section_header))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=4))
+
+    if image_path:
+        # Resolve path relative to script or absolute
+        if not os.path.isabs(image_path):
+            # Check in captures dir relative to current hub root
+            potential_path = os.path.join(os.getcwd(), image_path)
+            if os.path.exists(potential_path):
+                image_path = potential_path
+            elif os.path.exists(os.path.join(os.getcwd(), "detection-hub", image_path)):
+                image_path = os.path.join(os.getcwd(), "detection-hub", image_path)
 
     if image_path and os.path.exists(image_path):
         try:

@@ -55,6 +55,7 @@ fg_masks = {} # cam_id -> binary mask
 active_url_threads = set()
 trackers = {} # cam_id -> CentroidTracker instance
 learning_counters = {} # cam_id -> frame_count
+last_violation_times = {} # cam_id -> float timestamp
 
 # --- INTELLIGENT TRACKING CORE ---
 
@@ -261,10 +262,15 @@ async def start_detection_loop(cam_id):
         if cam_id not in camera_configs:
             break
             
-        await asyncio.sleep(0.15) # ~7 FPS
+        await asyncio.sleep(0.2) # ~5 FPS (Optimized for CPU)
         
         if not is_system_armed:
             continue
+            
+        # Cooling Break check (Per Camera)
+        cid_lower = cam_id.lower()
+        cooldown_remaining = 30 - (time.time() - last_violation_times.get(cid_lower, 0))
+        is_cooling = cooldown_remaining > 0
 
         cfg = camera_configs.get(cam_id)
         if not cfg or not cfg.get('is_active'):
@@ -286,7 +292,14 @@ async def start_detection_loop(cam_id):
             rx2 = int(cfg.get('roi_x2', 1) * w)
             ry2 = int(cfg.get('roi_y2', 1) * h)
             
-            # 2. Motion Detection
+            # 2. Motion Detection (Selective)
+            # Only run heavy background subtraction for behavioral cameras (Cam 1 & Cam 3)
+            # Cam 2 (Signal) can use a lighter check or simpler detection
+            if cam_id not in ["cam1", "cam3"] and traffic_light_status == "GREEN":
+                # If it's Cam 2 and light is Green, we don't care about violations, skip math
+                tracker.update([])
+                continue
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             fg_mask = bg_subtractor.apply(gray)
             
@@ -298,16 +311,18 @@ async def start_detection_loop(cam_id):
                 
             _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            fg_mask = cv2.erode(fg_mask, kernel, iterations=1)
-            fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
+            # Optimization: Skip erosion/dilation if CPU is pinned, or keep it light
+            fg_mask = cv2.dilate(fg_mask, kernel, iterations=1) 
             
             fg_masks[cam_id] = fg_mask # Shared for video feed
             
             contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            rects = []
+            # Sensitivity Adjustment: Cam 3 needs higher threshold for real vehicles
+            # Using 3000 for Cam 3 to focus on cars/trucks only
+            min_area = 3000 if cam_id.lower() == "cam3" else 500
             for cnt in contours:
-                if cv2.contourArea(cnt) < 500: continue # Higher sensitivity for toy cars
+                if cv2.contourArea(cnt) < min_area: continue
                 (x, y, cw, ch) = cv2.boundingRect(cnt)
                 rects.append((x, y, x + cw, y + ch))
             
@@ -317,6 +332,7 @@ async def start_detection_loop(cam_id):
             # 4. Behavioral Analysis
             for (obj_id, centroid) in objects.items():
                 if obj_id in violated_ids: continue
+                if is_cooling: continue # Skip detection during cooling break
                 
                 cx, cy = centroid
                 in_roi = rx1 <= cx <= rx2 and ry1 <= cy <= ry2
@@ -368,6 +384,7 @@ async def start_detection_loop(cam_id):
                     plate_number = extract_plate_text(frame_bytes)
                     
                     meta['is_violating'] = True # Mark for visual feedback
+                    last_violation_times[cam_id.lower()] = time.time() # Start cooling break
                     v_id = await save_violation(cam_id.upper(), v_type, confidence, timestamp_str, image_path, plate_number)
                     await broadcast_violation({
                         "id": v_id,
@@ -603,8 +620,14 @@ async def video_feed(cam_id: str):
                             cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (255, 100, 0), 2)
                             cv2.putText(frame, "DETECTION ZONE", (rx1, ry1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 100, 0), 1)
                             
+                            # Cooling Break Label
+                            cid_lower = cam_id.lower()
+                            cooldown = 30 - (time.time() - last_violation_times.get(cid_lower, 0))
+                            if cooldown > 0:
+                                cv2.putText(frame, f"COOLING DOWN: {int(cooldown)}s", (w - 150, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
+                            
                             # Direction Indicator for Cam 3 (Wrong Way)
-                            if cam_id == "cam3":
+                            if cid_lower == "cam3":
                                 # Draw a large "Correct Flow" arrow
                                 mid_x = (rx1 + rx2) // 2
                                 mid_y = (ry1 + ry2) // 2
@@ -637,16 +660,17 @@ async def video_feed(cam_id: str):
                                     cv2.circle(frame, (cx, cy), 4, main_color, -1)
                                     cv2.putText(frame, f"ID: {obj_id}", (cx+10, cy-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, main_color, 1)
 
-                                    # 2. Draw Motion Trail (Ghost Path)
+                                    # 2. Draw Motion Trail (Ghost Path) - Optimized
                                     positions = meta.get('positions', [])
-                                    if len(positions) > 2:
-                                        trail_color = (0, 0, 255) if is_v else (255, 255, 0) # Red or Cyan
-                                        for i in range(1, len(positions)):
-                                            thickness = int(np.sqrt(10 / float(i + 1)) * 2)
-                                            cv2.line(frame, positions[i - 1], positions[i], trail_color, thickness)
+                                    pos_len = len(positions)
+                                    if pos_len > 2:
+                                        trail_color = (0, 0, 255) if is_v else (255, 255, 0)
+                                        # Optimization: Draw thicker single line or polyline instead of per-segment math
+                                        pts = np.array(positions, np.int32).reshape((-1, 1, 2))
+                                        cv2.polylines(frame, [pts], False, trail_color, 2)
                                     
-                                    # 3. Draw Directional Vector Arrow
-                                    if len(positions) > 5:
+                                    # 3. Draw Directional Vector Arrow (ONLY CAM 3)
+                                    if cid_lower == "cam3" and len(positions) > 5:
                                         p1 = positions[-5]
                                         p2 = positions[-1]
                                         arrow_color = (0, 0, 255) if is_v else (0, 255, 255) # Red or Yellow
