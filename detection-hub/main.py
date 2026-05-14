@@ -263,6 +263,34 @@ async def start_detection_loop(cam_id):
     
     violated_ids = set() # Trackers we've already ticketed in this encounter
     
+    def process_cv_math(f_bytes, sub, trk, cid, light_status):
+        nparr = np.frombuffer(f_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is None: return None, None, None
+        h, w = frame.shape[:2]
+        
+        # Selective Motion
+        if cid not in ["cam1", "cam3"] and light_status == "GREEN":
+            trk.update([])
+            return frame, {}, (h, w)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mask = sub.apply(gray)
+        _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
+        mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)), iterations=1)
+        fg_masks[cid] = mask
+        
+        conts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rcts = []
+        min_a = 3000 if cid.lower() == "cam3" else 500
+        for c in conts:
+            if cv2.contourArea(c) < min_a: continue
+            (x, y, cw, ch) = cv2.boundingRect(c)
+            rcts.append((x, y, x + cw, y + ch))
+        
+        objs = trk.update(rcts)
+        return frame, objs, (h, w)
+
     while True:
         if cam_id not in camera_configs:
             break
@@ -286,37 +314,14 @@ async def start_detection_loop(cam_id):
             continue
             
         try:
-            def process_cv_math(f_bytes, sub, trk, cid, light_status):
-                nparr = np.frombuffer(f_bytes, np.uint8)
-                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                if frame is None: return None, None, None
-                h, w = frame.shape[:2]
-                
-                # Selective Motion
-                if cid not in ["cam1", "cam3"] and light_status == "GREEN":
-                    trk.update([])
-                    return frame, {}, (h, w)
-
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                mask = sub.apply(gray)
-                _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
-                mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)), iterations=1)
-                fg_masks[cid] = mask
-                
-                conts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                rcts = []
-                min_a = 3000 if cid.lower() == "cam3" else 500
-                for c in conts:
-                    if cv2.contourArea(c) < min_a: continue
-                    (x, y, cw, ch) = cv2.boundingRect(c)
-                    rcts.append((x, y, x + cw, y + ch))
-                
-                objs = trk.update(rcts)
-                return frame, objs, (h, w)
-
             # Offload heavy CV math to thread pool to prevent event loop freeze
             frame, objects, size = await asyncio.to_thread(process_cv_math, frame_bytes, bg_subtractor, tracker, cam_id, traffic_light_status)
             
+            # 0. Calibration Progress
+            if learning_counters[cam_id] < 50:
+                learning_counters[cam_id] += 1
+                continue
+
             if frame is None: continue
             h, w = size
             
