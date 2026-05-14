@@ -210,7 +210,33 @@ export default function Home() {
             <span className="text-xs font-black italic text-primary uppercase">Manual Test Triggers</span>
             <span className="text-[9px] font-medium text-white/40 uppercase">Trigger artificial violation events for verification</span>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap border-l border-white/10 pl-3">
+            <div className="flex flex-col mr-2">
+              <span className="text-[9px] font-black text-primary uppercase">Hardware Simulation</span>
+            </div>
+            <button 
+              onClick={() => fetch('http://10.35.14.40/setstate?val=RED').catch(e => console.error(e))}
+              className="px-3 py-1.5 rounded bg-error/20 hover:bg-error/30 text-error border border-error/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Set RED
+            </button>
+            <button 
+              onClick={() => fetch('http://10.35.14.40/setstate?val=GREEN').catch(e => console.error(e))}
+              className="px-3 py-1.5 rounded bg-success/20 hover:bg-success/30 text-success border border-success/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Set GREEN
+            </button>
+            <button 
+              onClick={() => fetch('http://10.35.14.40/setstate?val=YELLOW').catch(e => console.error(e))}
+              className="px-3 py-1.5 rounded bg-warning/20 hover:bg-warning/30 text-warning border border-warning/40 text-[10px] font-bold uppercase transition-all"
+            >
+              Set YELLOW
+            </button>
+          </div>
+          <div className="flex gap-2 flex-wrap border-l border-white/10 pl-3">
+            <div className="flex flex-col mr-2">
+              <span className="text-[9px] font-black text-primary uppercase">Event Simulation</span>
+            </div>
             <button 
               onClick={() => {
                 fetch('http://127.0.0.1:8005/test/trigger-violation', {
@@ -221,9 +247,9 @@ export default function Home() {
                 .then(res => res.json())
                 .catch(err => console.error(err));
               }}
-              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
+              className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 text-[10px] font-bold uppercase transition-all"
             >
-              Simulate Cam1 Violation
+              Test Cam1 (Parking)
             </button>
             <button 
               onClick={() => {
@@ -235,23 +261,9 @@ export default function Home() {
                 .then(res => res.json())
                 .catch(err => console.error(err));
               }}
-              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
+              className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 text-[10px] font-bold uppercase transition-all"
             >
-              Simulate Cam2 Violation
-            </button>
-            <button 
-              onClick={() => {
-                fetch('http://127.0.0.1:8005/test/trigger-violation', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-API-Key': 'sentinel-secret-2026' },
-                  body: JSON.stringify({ cam_id: 'cam3', v_type: 'Stop Line' })
-                })
-                .then(res => res.json())
-                .catch(err => console.error(err));
-              }}
-              className="px-3 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[10px] font-bold uppercase transition-all"
-            >
-              Simulate Cam3 Violation
+              Test Cam2 (Red Robot)
             </button>
           </div>
         </div>

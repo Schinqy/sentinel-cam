@@ -94,11 +94,13 @@ async def init_db():
 async def save_violation(cam_id, v_type, confidence, timestamp, image_path, plate_number=None):
     """Saves a violation record to the database."""
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+        async with db.execute(
             "INSERT INTO violations (cam_id, type, confidence, timestamp, image_path, plate_number) VALUES (?, ?, ?, ?, ?, ?)",
             (cam_id, v_type, confidence, timestamp, image_path, plate_number)
-        )
-        await db.commit()
+        ) as cursor:
+            row_id = cursor.lastrowid
+            await db.commit()
+            return row_id
 
 async def get_all_violations(limit=50):
     """Retrieves the latest violations from the database."""

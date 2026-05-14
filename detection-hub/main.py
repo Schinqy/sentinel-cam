@@ -21,6 +21,7 @@ from scipy.spatial import distance as dist
 from database import init_db, save_violation, get_all_violations, get_cameras, update_camera_roi
 from utils import ensure_captures_dir, save_violation_frame, extract_plate_text
 from challan_generator import generate_pdf_challan
+import aiohttp
 
 app = FastAPI(title="SentinelCam Detection Hub")
 
@@ -44,6 +45,7 @@ latest_frames = {}
 camera_configs = {}
 active_connections = set()
 traffic_light_status = "GREEN"
+ESP32_STATUS_URL = "http://10.35.14.40/status"
 is_system_armed = True # MASTER ARM/DISARM
 show_debug_overlays = True # AI VIEW TOGGLE
 show_motion_mask = False # DIAGNOSTIC MASK TOGGLE
@@ -351,8 +353,9 @@ async def start_detection_loop(cam_id):
                     image_path = save_violation_frame(frame_bytes, cam_id, v_type)
                     plate_number = extract_plate_text(frame_bytes)
                     
-                    await save_violation(cam_id.upper(), v_type, confidence, timestamp_str, image_path, plate_number)
+                    v_id = await save_violation(cam_id.upper(), v_type, confidence, timestamp_str, image_path, plate_number)
                     await broadcast_violation({
+                        "id": v_id,
                         "type": v_type, "cam_id": cam_id.upper(), "violation": v_type,
                         "confidence": confidence, "timestamp": timestamp_str,
                         "image_path": image_path, "plate_number": plate_number
@@ -409,7 +412,6 @@ async def toggle_mask(data: dict):
 @app.delete("/api/violations/clear", dependencies=[Depends(verify_api_key)])
 async def clear_violations():
     from database import DB_PATH
-    import shutil
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM violations")
         await db.commit()
@@ -420,6 +422,62 @@ async def clear_violations():
             except: pass
             
     return {"status": "success"}
+
+@app.delete("/api/violations/{violation_id}", dependencies=[Depends(verify_api_key)])
+async def delete_single_violation(violation_id: int):
+    from database import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Get image path first to delete the file
+        async with db.execute("SELECT image_path FROM violations WHERE id=?", (violation_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] and os.path.exists(row[0]):
+                try: os.remove(row[0])
+                except: pass
+        
+        await db.execute("DELETE FROM violations WHERE id=?", (violation_id,))
+        await db.commit()
+    return {"status": "success"}
+
+@app.post("/api/violations/delete-multiple", dependencies=[Depends(verify_api_key)])
+async def delete_multiple_violations(data: dict):
+    ids = data.get("ids", [])
+    if not ids:
+        return {"status": "error", "message": "No IDs provided"}
+    
+    from database import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Batch fetch image paths
+        placeholders = ",".join(["?"] * len(ids))
+        async with db.execute(f"SELECT image_path FROM violations WHERE id IN ({placeholders})", ids) as cursor:
+            rows = await cursor.fetchall()
+            for row in rows:
+                if row[0] and os.path.exists(row[0]):
+                    try: os.remove(row[0])
+                    except: pass
+        
+        await db.execute(f"DELETE FROM violations WHERE id IN ({placeholders})", ids)
+        await db.commit()
+    return {"status": "success"}
+
+async def poll_esp32_status():
+    """Background task to sync AI detection state with physical ESP32 state."""
+    global traffic_light_status
+    print(f"[HUB] Starting ESP32 status sync: {ESP32_STATUS_URL}")
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(ESP32_STATUS_URL, timeout=1) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        new_status = data.get("state", "GREEN").upper()
+                        if new_status != traffic_light_status:
+                            traffic_light_status = new_status
+                            await broadcast_message({"type": "STATUS", "traffic_light": traffic_light_status})
+                            print(f"[HUB] Traffic Light Synced: {traffic_light_status}")
+            except Exception:
+                # Silently fail if ESP32 is offline
+                pass
+            await asyncio.sleep(0.5)
 
 async def cleanup_old_captures():
     while True:
@@ -439,6 +497,7 @@ async def startup_event():
     if not os.path.exists("captures"): os.makedirs("captures")
     app.mount("/captures", StaticFiles(directory="captures"), name="captures")
     asyncio.create_task(cleanup_old_captures())
+    asyncio.create_task(poll_esp32_status())
     cameras = await get_cameras()
     for cam in cameras:
         cam_id = cam['id']
@@ -625,9 +684,9 @@ async def trigger_test_violation(data: dict):
     t_str = time.strftime("%H:%M:%S")
     img_p = save_violation_frame(frame, cam_id, v_type)
     plate = extract_plate_text(frame)
-    await save_violation(cam_id.upper(), v_type, 0.99, t_str, img_p, plate)
-    await broadcast_violation({"type": v_type, "cam_id": cam_id.upper(), "violation": v_type, "confidence": 0.99, "timestamp": t_str, "image_path": img_p, "plate_number": plate})
-    return {"status": "success"}
+    v_id = await save_violation(cam_id.upper(), v_type, 0.99, t_str, img_p, plate)
+    await broadcast_violation({"id": v_id, "type": v_type, "cam_id": cam_id.upper(), "violation": v_type, "confidence": 0.99, "timestamp": t_str, "image_path": img_p, "plate_number": plate})
+    return {"status": "success", "id": v_id}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8005)

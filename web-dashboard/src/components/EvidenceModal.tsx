@@ -16,8 +16,8 @@ export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-      <div className="relative max-w-4xl w-full glass-card border border-white/10 overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="p-6 border-b border-white/10 flex justify-between items-end bg-gradient-to-b from-white/10 to-transparent">
+      <div className="relative max-w-4xl w-full max-h-[95vh] flex flex-col glass-card border border-white/10 overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="p-6 border-b border-white/10 flex justify-between items-end bg-gradient-to-b from-white/10 to-transparent flex-shrink-0">
           <div>
             <h2 className="text-[10px] font-black text-primary tracking-[0.3em] uppercase mb-2">VIOLATION EVIDENCE</h2>
             <div className="flex items-center gap-4">
@@ -44,25 +44,25 @@ export default function EvidenceModal({ isOpen, onClose, imageUrl, violationData
           </div>
         </div>
 
-        <div className="p-2 bg-black/40">
+        <div className="p-2 bg-black/40 overflow-y-auto flex-grow flex items-center justify-center min-h-0">
           {imageUrl ? (
             <img 
               src={imageUrl} 
               alt="Evidence" 
-              className="w-full h-auto rounded border border-white/10"
+              className="max-w-full max-h-[70vh] object-contain rounded border border-white/10"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.src = "https://images.unsplash.com/photo-1545147986-a9d6f2bb03b5?auto=format&fit=crop&q=80&w=800";
               }}
             />
           ) : (
-            <div className="aspect-video flex items-center justify-center bg-white/5 text-white/20 text-xs uppercase tracking-widest">
+            <div className="aspect-video w-full flex items-center justify-center bg-white/5 text-white/20 text-xs uppercase tracking-widest">
               IMAGE NOT FOUND
             </div>
           )}
         </div>
 
-        <div className="p-4 flex gap-4 justify-end">
+        <div className="p-4 flex gap-4 justify-end border-t border-white/5 flex-shrink-0">
             <button 
                 onClick={onClose}
                 className="px-6 py-2 bg-white/5 hover:bg-white/10 text-[10px] font-bold text-white/60 uppercase tracking-widest rounded transition-all"

@@ -11,11 +11,73 @@ interface ViolationHistoryProps {
 
 export default function ViolationHistory({ violations, onViolationClick, onBack }: ViolationHistoryProps) {
   const [filter, setFilter] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredViolations = violations.filter(v => 
     v.cam_id.toLowerCase().includes(filter.toLowerCase()) ||
     (v.violation || v.type || '').toLowerCase().includes(filter.toLowerCase())
   );
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredViolations.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredViolations.map(v => v.id!).filter(id => id !== undefined));
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const deleteSingle = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!confirm("Delete this record permanently?")) return;
+    
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8005/api/violations/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-API-Key': 'sentinel-secret-2026' }
+      });
+      if (res.ok) {
+        // We'd ideally call a refresh function passed from parent, 
+        // but for now, the user can refresh or the parent will update.
+        // In page.tsx, we should have a way to refresh.
+        window.location.reload(); // Simple sync for now
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const deleteBulk = async () => {
+    if (!confirm(`Delete ${selectedIds.length} records permanently?`)) return;
+    
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8005/api/violations/delete-multiple`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-API-Key': 'sentinel-secret-2026' 
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
 
   return (
@@ -40,6 +102,15 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto">
+            {selectedIds.length > 0 && (
+              <button 
+                onClick={deleteBulk}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-error/20 hover:bg-error/30 text-error border border-error/40 text-[10px] font-bold uppercase tracking-widest rounded transition-all animate-in fade-in zoom-in"
+              >
+                DELETE SELECTED ({selectedIds.length})
+              </button>
+            )}
            <div className="relative flex-1 md:w-64">
               <input 
                 type="text" 
@@ -60,6 +131,14 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-white/5 bg-white/[0.02]">
+              <th className="px-6 py-4 w-10">
+                <input 
+                  type="checkbox" 
+                  checked={selectedIds.length === filteredViolations.length && filteredViolations.length > 0}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-white/10 bg-black/40 accent-primary cursor-pointer"
+                />
+              </th>
               <th className="px-6 py-4 text-[10px] font-black text-white/40 uppercase tracking-widest">Timestamp</th>
               <th className="px-6 py-4 text-[10px] font-black text-white/40 uppercase tracking-widest">Camera ID</th>
               <th className="px-6 py-4 text-[10px] font-black text-white/40 uppercase tracking-widest">Plate Number</th>
@@ -71,7 +150,7 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
           <tbody className="divide-y divide-white/5">
             {filteredViolations.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-20 text-center">
+                <td colSpan={7} className="px-6 py-20 text-center">
                    <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
                      NO MATCHING RECORDS FOUND
                    </div>
@@ -81,9 +160,17 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
               filteredViolations.map((v, i) => (
                 <tr 
                   key={`${v.timestamp}-${i}`} 
-                  className="hover:bg-white/[0.03] transition-colors group cursor-pointer"
+                  className={`hover:bg-white/[0.03] transition-colors group cursor-pointer ${selectedIds.includes(v.id!) ? 'bg-primary/5' : ''}`}
                   onClick={() => onViolationClick(v)}
                 >
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.includes(v.id!)}
+                      onChange={() => toggleSelect(v.id!)}
+                      className="w-4 h-4 rounded border-white/10 bg-black/40 accent-primary cursor-pointer"
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <span className="text-[11px] font-mono text-white/80">{v.timestamp}</span>
                   </td>
@@ -110,9 +197,18 @@ export default function ViolationHistory({ violations, onViolationClick, onBack 
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="px-3 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] font-black italic text-primary uppercase tracking-tighter hover:bg-primary/20 transition-all">
-                      Review Evidence
-                    </button>
+                    <div className="flex justify-end gap-2 items-center">
+                      <button 
+                        onClick={(e) => deleteSingle(e, v.id!)}
+                        className="p-2 hover:bg-error/20 text-white/20 hover:text-error rounded transition-all"
+                        title="Delete record"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                      </button>
+                      <button className="px-3 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] font-black italic text-primary uppercase tracking-tighter hover:bg-primary/20 transition-all">
+                        Review
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

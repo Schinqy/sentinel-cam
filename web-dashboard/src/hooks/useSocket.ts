@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 
 export interface ViolationEvent {
+  id?: number;
   type: string;
   cam_id: string;
   violation: string;

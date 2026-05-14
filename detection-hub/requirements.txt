@@ -6,5 +6,5 @@ websockets
 python-multipart
 asyncio
 requests
-pytesseract
+easyocr
 reportlab
