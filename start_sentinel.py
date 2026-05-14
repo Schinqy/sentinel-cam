@@ -15,10 +15,14 @@ def start_system():
     print("   Starting all system services...")
     print("="*55 + "\n")
 
-    # 0. Cleanup existing zombies
+    # 0. Cleanup existing zombies (Targeted ports 8005 and 3001)
     print("[0/3] Cleaning up existing processes...")
-    subprocess.run("taskkill /F /IM python.exe /T", shell=True, capture_output=True)
-    subprocess.run("taskkill /F /IM node.exe /T", shell=True, capture_output=True)
+    try:
+        # Kill whatever is on port 8005 (Hub) and 3001 (Dashboard)
+        subprocess.run("for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :8005') do taskkill /F /PID %a", shell=True, capture_output=True)
+        subprocess.run("for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :3001') do taskkill /F /PID %a", shell=True, capture_output=True)
+    except:
+        pass
     time.sleep(1)
 
     # 1. Start Detection Hub
