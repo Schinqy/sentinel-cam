@@ -15,6 +15,12 @@ def start_system():
     print("   Starting all system services...")
     print("="*55 + "\n")
 
+    # 0. Cleanup existing zombies
+    print("[0/3] Cleaning up existing processes...")
+    subprocess.run("taskkill /F /IM python.exe /T", shell=True, capture_output=True)
+    subprocess.run("taskkill /F /IM node.exe /T", shell=True, capture_output=True)
+    time.sleep(1)
+
     # 1. Start Detection Hub
     print("[1/3] Starting Detection Hub (Python)...")
     hub_proc = subprocess.Popen(

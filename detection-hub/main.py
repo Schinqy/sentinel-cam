@@ -364,13 +364,16 @@ async def start_detection_loop(cam_id):
                         direction = cfg.get('enforce_direction', 'UP')
                         
                         is_wrong = False
-                        if direction == 'UP' and curr_pos[1] < start_pos[1] - 30:
+                        # Sensitivity: Increased movement requirement (80px) and consistency (10+ frames)
+                        # This prevents false positives from slight wobbles or noise
+                        move_thresh = 80 
+                        if direction == 'UP' and curr_pos[1] < start_pos[1] - move_thresh:
                             is_wrong = True
-                        elif direction == 'DOWN' and curr_pos[1] > start_pos[1] + 30:
+                        elif direction == 'DOWN' and curr_pos[1] > start_pos[1] + move_thresh:
                             is_wrong = True
-                        elif direction == 'LEFT' and curr_pos[0] < start_pos[0] - 30:
+                        elif direction == 'LEFT' and curr_pos[0] < start_pos[0] - move_thresh:
                             is_wrong = True
-                        elif direction == 'RIGHT' and curr_pos[0] > start_pos[0] + 30:
+                        elif direction == 'RIGHT' and curr_pos[0] > start_pos[0] + move_thresh:
                             is_wrong = True
                             
                         if is_wrong:
@@ -551,14 +554,14 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True: await websocket.receive_text()
     except WebSocketDisconnect:
-        active_connections.add(websocket)
+        active_connections.discard(websocket)
 
 @app.post("/api/generate-challan", dependencies=[Depends(verify_api_key)])
 async def create_challan(data: dict):
     if "image_path" in data and data["image_path"]:
-        if "captures/" in data["image_path"]:
-            filename = data["image_path"].split("captures/")[-1]
-            data["image_path"] = os.path.join("captures", filename)
+        # Get just the filename regardless of path separators
+        filename = os.path.basename(data["image_path"])
+        data["image_path"] = os.path.join("captures", filename)
     pdf_path = generate_pdf_challan(data, output_dir="captures")
     return {"status": "success", "pdf_url": f"/captures/{os.path.basename(pdf_path)}"}
 
@@ -621,11 +624,13 @@ async def video_feed(cam_id: str):
                             cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (255, 100, 0), 2)
                             cv2.putText(frame, "DETECTION ZONE", (rx1, ry1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 100, 0), 1)
                             
-                            # Cooling Break Label
+                            # Cooling Break Label (More visible - Top Center)
                             cid_lower = cam_id.lower()
                             cooldown = 30 - (time.time() - last_violation_times.get(cid_lower, 0))
                             if cooldown > 0:
-                                cv2.putText(frame, f"COOLING DOWN: {int(cooldown)}s", (w - 150, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
+                                # Semi-transparent overlay for text
+                                cv2.putText(frame, f"COOLING DOWN: {int(cooldown)}s", (w//2 - 70, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                                cv2.putText(frame, "ENFORCEMENT PAUSED", (w//2 - 65, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
                             
                             # Direction Indicator for Cam 3 (Wrong Way)
                             if cid_lower == "cam3":
