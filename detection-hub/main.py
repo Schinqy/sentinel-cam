@@ -248,6 +248,11 @@ def start_capture_thread(cam_id, url):
     t = threading.Thread(target=run_capture, daemon=True)
     t.start()
 
+import concurrent.futures
+
+# Thread pool for CPU-bound tasks (CV and OCR)
+cv_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
 async def start_detection_loop(cam_id):
     """Behavioral CV loop using Centroid Tracking and Persistence Analysis."""
     print(f"[HUB] Starting Intelligent CV loop for: {cam_id}")
@@ -281,54 +286,45 @@ async def start_detection_loop(cam_id):
             continue
             
         try:
-            nparr = np.frombuffer(frame_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if frame is None: continue
-            h, w = frame.shape[:2]
+            def process_cv_math(f_bytes, sub, trk, cid, light_status):
+                nparr = np.frombuffer(f_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if frame is None: return None, None, None
+                h, w = frame.shape[:2]
+                
+                # Selective Motion
+                if cid not in ["cam1", "cam3"] and light_status == "GREEN":
+                    trk.update([])
+                    return frame, {}, (h, w)
+
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                mask = sub.apply(gray)
+                _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
+                mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)), iterations=1)
+                fg_masks[cid] = mask
+                
+                conts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                rcts = []
+                min_a = 3000 if cid.lower() == "cam3" else 500
+                for c in conts:
+                    if cv2.contourArea(c) < min_a: continue
+                    (x, y, cw, ch) = cv2.boundingRect(c)
+                    rcts.append((x, y, x + cw, y + ch))
+                
+                objs = trk.update(rcts)
+                return frame, objs, (h, w)
+
+            # Offload heavy CV math to thread pool to prevent event loop freeze
+            frame, objects, size = await asyncio.to_thread(process_cv_math, frame_bytes, bg_subtractor, tracker, cam_id, traffic_light_status)
             
-            # 1. ROI Prep
+            if frame is None: continue
+            h, w = size
+            
+            # 1. ROI Prep (needed for behavioral analysis below)
             rx1 = int(cfg.get('roi_x1', 0) * w)
             ry1 = int(cfg.get('roi_y1', 0) * h)
             rx2 = int(cfg.get('roi_x2', 1) * w)
             ry2 = int(cfg.get('roi_y2', 1) * h)
-            
-            # 2. Motion Detection (Selective)
-            # Only run heavy background subtraction for behavioral cameras (Cam 1 & Cam 3)
-            # Cam 2 (Signal) can use a lighter check or simpler detection
-            if cam_id not in ["cam1", "cam3"] and traffic_light_status == "GREEN":
-                # If it's Cam 2 and light is Green, we don't care about violations, skip math
-                tracker.update([])
-                continue
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            fg_mask = bg_subtractor.apply(gray)
-            
-            # Calibration period (first 50 frames)
-            if learning_counters[cam_id] < 50:
-                learning_counters[cam_id] += 1
-                fg_masks[cam_id] = fg_mask # Save raw mask for debug
-                continue
-                
-            _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            # Optimization: Skip erosion/dilation if CPU is pinned, or keep it light
-            fg_mask = cv2.dilate(fg_mask, kernel, iterations=1) 
-            
-            fg_masks[cam_id] = fg_mask # Shared for video feed
-            
-            contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            rects = []
-            # Sensitivity Adjustment: Cam 3 needs higher threshold for real vehicles
-            # Using 3000 for Cam 3 to focus on cars/trucks only
-            min_area = 3000 if cam_id.lower() == "cam3" else 500
-            for cnt in contours:
-                if cv2.contourArea(cnt) < min_area: continue
-                (x, y, cw, ch) = cv2.boundingRect(cnt)
-                rects.append((x, y, x + cw, y + ch))
-            
-            # 3. Tracking Update
-            objects = tracker.update(rects)
             
             # 4. Behavioral Analysis
             for (obj_id, centroid) in objects.items():
@@ -399,7 +395,8 @@ async def start_detection_loop(cam_id):
                     confidence = round(random.uniform(0.92, 0.99), 2)
                     
                     image_path = save_violation_frame(frame_bytes, cam_id, v_type)
-                    plate_number = extract_plate_text(frame_bytes)
+                    # OCR is extremely slow on CPU, offload to thread pool
+                    plate_number = await asyncio.to_thread(extract_plate_text, frame_bytes)
                     
                     meta['is_violating'] = True # Mark for visual feedback
                     last_violation_times[cam_id.lower()] = time.time() # Start cooling break
