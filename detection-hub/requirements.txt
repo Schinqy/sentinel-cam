@@ -8,3 +8,6 @@ asyncio
 requests
 easyocr
 reportlab
+aiohttp
+aiosqlite
+scipy
