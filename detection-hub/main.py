@@ -318,6 +318,7 @@ async def start_detection_loop(cam_id):
             
             contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
+            rects = []
             # Sensitivity Adjustment: Cam 3 needs higher threshold for real vehicles
             # Using 3000 for Cam 3 to focus on cars/trucks only
             min_area = 3000 if cam_id.lower() == "cam3" else 500
