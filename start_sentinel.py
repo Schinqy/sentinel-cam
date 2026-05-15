@@ -47,27 +47,42 @@ def start_system():
 
     # 3. Open Browser
     url = "http://localhost:3001"
-    print(f"\n🚀 System is LIVE at {url}")
     webbrowser.open(url)
 
-    print("\nKEEP THIS WINDOW OPEN TO RUN THE SYSTEM.")
-    print("Close this window or press Ctrl+C to stop all services.")
-
-    print("\n[✔] ALL SERVICES RUNNING. Close this window or use Ctrl+C to stop the services.")
-
-    while True:
+    # 4. Main monitoring loop
+    print("\n[✔] SYSTEM LIVE: Dashboard at http://localhost:3001")
+    print("[!] Press CTRL+C to stop all services.\n")
+    
+    try:
+        while True:
+            # Check if processes are still alive
+            hub_status = hub_proc.poll()
+            dash_status = dash_proc.poll()
+            
+            if hub_status is not None:
+                print(f"[!] Hub process died with code {hub_status}. Restarting...")
+                hub_proc = subprocess.Popen([sys.executable, "main.py"], cwd=hub_dir, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            
+            if dash_status is not None:
+                print(f"[!] Dashboard process died with code {dash_status}. Restarting...")
+                dash_proc = subprocess.Popen("npm run dev", cwd=dash_dir, shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print("\n\n[!] Shutting down SentinelCam...")
+    except Exception as e:
+        print(f"\n[❌] CRITICAL ERROR: {e}")
+    finally:
+        # Kill processes aggressively on Windows
         try:
-            time.sleep(1)
-        except (KeyboardInterrupt, SystemExit):
-            print("\n\n[!] Shutting down SentinelCam...")
-            break
-        except Exception:
+            subprocess.run(f"taskkill /F /T /PID {hub_proc.pid}", shell=True, capture_output=True)
+            subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
+        except:
             pass
-
-    # Kill processes aggressively on Windows
-    subprocess.run(f"taskkill /F /T /PID {hub_proc.pid}", shell=True, capture_output=True)
-    subprocess.run(f"taskkill /F /T /PID {dash_proc.pid}", shell=True, capture_output=True)
-    print("[✔] Cleanup complete. Goodbye!")
+        print("[✔] Cleanup complete. Goodbye!")
 
 if __name__ == "__main__":
-    start_system()
+    try:
+        start_system()
+    except Exception as e:
+        print(f"FAILED TO START: {e}")

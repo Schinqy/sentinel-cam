@@ -45,7 +45,8 @@ latest_frames = {}
 camera_configs = {}
 active_connections = set()
 traffic_light_status = "GREEN"
-ESP32_STATUS_URL = "http://10.35.14.40/status"
+# ESP32_STATUS_URL will be resolved dynamically from Camera 2 config
+ESP32_STATUS_URL = None 
 is_system_armed = True # MASTER ARM/DISARM
 show_debug_overlays = True # AI VIEW TOGGLE
 show_motion_mask = False # DIAGNOSTIC MASK TOGGLE
@@ -513,23 +514,32 @@ async def delete_multiple_violations(data: dict):
 
 async def poll_esp32_status():
     """Background task to sync AI detection state with physical ESP32 state."""
-    global traffic_light_status
-    print(f"[HUB] Starting ESP32 status sync: {ESP32_STATUS_URL}")
+    global traffic_light_status, ESP32_STATUS_URL
+    print("[HUB] Starting ESP32 status sync...")
     async with aiohttp.ClientSession() as session:
         while True:
-            try:
-                async with session.get(ESP32_STATUS_URL, timeout=1) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        new_status = data.get("state", "GREEN").upper()
-                        if new_status != traffic_light_status:
-                            traffic_light_status = new_status
-                            await broadcast_message({"type": "STATUS", "traffic_light": traffic_light_status})
-                            print(f"[HUB] Traffic Light Synced: {traffic_light_status}")
-            except Exception:
-                # Silently fail if ESP32 is offline
-                pass
-            await asyncio.sleep(0.5)
+            # Dynamically resolve URL if not set or if config changed
+            if not ESP32_STATUS_URL and "cam2" in camera_configs:
+                cam2_url = camera_configs["cam2"].get("url", "")
+                if "http" in cam2_url:
+                    # Convert http://1.2.3.4/stream to http://1.2.3.4:81/status
+                    base = "/".join(cam2_url.split("/")[:-1])
+                    ESP32_STATUS_URL = f"{base}:81/status"
+            
+            if ESP32_STATUS_URL:
+                try:
+                    async with session.get(ESP32_STATUS_URL, timeout=5) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            new_status = data.get("state", "GREEN").upper()
+                            if new_status != traffic_light_status:
+                                traffic_light_status = new_status
+                                await broadcast_message({"type": "STATUS", "traffic_light": traffic_light_status})
+                                print(f"[HUB] Traffic Light Synced: {traffic_light_status}")
+                except Exception:
+                    # Silently fail if ESP32 is offline
+                    pass
+            await asyncio.sleep(5.0)
 
 async def cleanup_old_captures():
     while True:

@@ -36,7 +36,9 @@ static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" 
 static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
-httpd_handle_t server_httpd = NULL;
+// ================= SERVER HANDLES =================
+httpd_handle_t stream_httpd = NULL;
+httpd_handle_t api_httpd = NULL;
 
 // ================= TRAFFIC STATE =================
 String trafficState = "WAITING";
@@ -91,11 +93,17 @@ static esp_err_t status_handler(httpd_req_t *req) {
 
 // 3. ✅ NEW: SIMULATION ENDPOINT (/setstate?val=GREEN)
 static esp_err_t set_state_handler(httpd_req_t *req) {
-  char buf[32];
-  if (httpd_query_key_value(req->uri, "val", buf, sizeof(buf)) == ESP_OK) {
-    trafficState = String(buf);
-    trafficState.toUpperCase();
-    Serial.println("SIMULATED_STATE: " + trafficState);
+  char buf[64];
+  size_t query_len = httpd_req_get_url_query_len(req) + 1;
+  if (query_len > 1) {
+    if (httpd_req_get_url_query_str(req, buf, query_len) == ESP_OK) {
+      char param[32];
+      if (httpd_query_key_value(buf, "val", param, sizeof(param)) == ESP_OK) {
+        trafficState = String(param);
+        trafficState.toUpperCase();
+        Serial.println("SIMULATED_STATE: " + trafficState);
+      }
+    }
   }
   return httpd_resp_send(req, "OK", 2);
 }
@@ -136,19 +144,32 @@ static esp_err_t traffic_handler(httpd_req_t *req) {
 // ================= CAMERA SERVER =================
 
 void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 80;
+  // 1. STREAM SERVER (Port 80)
+  httpd_config_t stream_config = HTTPD_DEFAULT_CONFIG();
+  stream_config.server_port = 80;
+  stream_config.ctrl_port = 32768;
+
+  // 2. API SERVER (Port 81)
+  httpd_config_t api_config = HTTPD_DEFAULT_CONFIG();
+  api_config.server_port = 81;
+  api_config.ctrl_port = 32769; // Must be different
+  api_config.max_open_sockets = 4;
 
   httpd_uri_t stream_uri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = NULL };
   httpd_uri_t status_uri = { .uri = "/status", .method = HTTP_GET, .handler = status_handler, .user_ctx = NULL };
   httpd_uri_t set_uri    = { .uri = "/setstate", .method = HTTP_GET, .handler = set_state_handler, .user_ctx = NULL };
   httpd_uri_t traffic_uri = { .uri = "/trafficlights", .method = HTTP_GET, .handler = traffic_handler, .user_ctx = NULL };
 
-  if (httpd_start(&server_httpd, &config) == ESP_OK) {
-    httpd_register_uri_handler(server_httpd, &stream_uri);
-    httpd_register_uri_handler(server_httpd, &status_uri);
-    httpd_register_uri_handler(server_httpd, &set_uri);
-    httpd_register_uri_handler(server_httpd, &traffic_uri);
+  // Start Stream Server
+  if (httpd_start(&stream_httpd, &stream_config) == ESP_OK) {
+    httpd_register_uri_handler(stream_httpd, &stream_uri);
+  }
+
+  // Start API Server
+  if (httpd_start(&api_httpd, &api_config) == ESP_OK) {
+    httpd_register_uri_handler(api_httpd, &status_uri);
+    httpd_register_uri_handler(api_httpd, &set_uri);
+    httpd_register_uri_handler(api_httpd, &traffic_uri);
   }
 }
 
@@ -167,7 +188,7 @@ void setup() {
   config.pin_sscb_sda = SIOD_GPIO_NUM; config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000; config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_QVGA; config.jpeg_quality = 12; config.fb_count = 1;
+  config.frame_size = FRAMESIZE_QVGA; config.jpeg_quality = 15; config.fb_count = 1;
 
   esp_camera_init(&config);
 
@@ -181,8 +202,8 @@ void setup() {
   startCameraServer();
 
   Serial.print("Stream: http://"); Serial.print(WiFi.localIP()); Serial.println("/stream");
-  Serial.print("API: http://");    Serial.print(WiFi.localIP()); Serial.println("/status");
-  Serial.print("Live UI: http://"); Serial.print(WiFi.localIP()); Serial.println("/trafficlights");
+  Serial.print("API: http://");    Serial.print(WiFi.localIP()); Serial.println(":81/status");
+  Serial.print("Live UI: http://"); Serial.print(WiFi.localIP()); Serial.println(":81/trafficlights");
 }
 
 // ================= LOOP =================
